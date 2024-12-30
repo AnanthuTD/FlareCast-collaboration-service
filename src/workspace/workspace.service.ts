@@ -1,10 +1,36 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
+import { KafkaService } from 'src/kafka/kafka.service';
 
 @Injectable()
-export class WorkspaceService {
-  constructor(private readonly databaseService: DatabaseService) {}
+export class WorkspaceService implements OnModuleInit {
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly kafkaService: KafkaService,
+  ) {}
+
+  /* listen to user-created topic and create a new personal workspace for every new user */
+  async onModuleInit() {
+    try {
+      await this.kafkaService.subscribeToTopic(
+        'user-events',
+        async (message) => {
+          if (message.key === 'user-created') {
+            const { userId } = message.value;
+            console.log(`User created: ${userId}`);
+
+            // Create default workspace
+            await this.databaseService.workSpace.create({
+              data: { userId, name: 'Default Workspace', type: 'PERSONAL' },
+            });
+          }
+        },
+      );
+    } catch (error) {
+      console.error('Failed to subscribe to Kafka topic:', error.message);
+    }
+  }
 
   // Create a new workspace
   async create(createWorkspaceDto: Prisma.WorkSpaceCreateInput) {
