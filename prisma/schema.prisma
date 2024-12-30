@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model WorkSpace {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  type      Type
+  name      String
+  userId    String?  @db.ObjectId
+  createdAt DateTime @default(now())
+  folders   Folder[]
+  members   Member[]
+  invite    Invite[]
+
+  @@index([userId])
+  @@index([name])
+}
+
+model Folder {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  name        String     @default("Untitled Folder")
+  createdAt   DateTime   @default(now())
+  workSpaceId String?    @db.ObjectId
+  WorkSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
+
+  @@index([workSpaceId])
+}
+
+model Member {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String?    @db.ObjectId
+  createdAt   DateTime   @default(now())
+  member      Boolean    @default(true)
+  workSpaceId String?    @db.ObjectId
+  WorkSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
+
+  @@index([userId])
+  @@index([workSpaceId])
+}
+
+model Invite {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  senderId    String?    @db.ObjectId
+  recieverId  String?    @db.ObjectId
+  content     String
+  accepted    Boolean    @default(false)
+  workSpaceId String?    @db.ObjectId
+  WorkSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
+
+  @@index([senderId])
+  @@index([recieverId])
+  @@index([workSpaceId])
+}
+
+enum Type {
+  PERSONAL
+  PUBLIC
+}
