@@ -11,7 +11,7 @@ model WorkSpace {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   type      Type
   name      String
-  userId    String?  @db.ObjectId
+  userId    String 
   createdAt DateTime @default(now())
   folders   Folder[]
   members   Member[]
@@ -33,7 +33,7 @@ model Folder {
 
 model Member {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String?    @db.ObjectId
+  userId      String?    
   createdAt   DateTime   @default(now())
   member      Boolean    @default(true)
   workSpaceId String?    @db.ObjectId
@@ -45,8 +45,8 @@ model Member {
 
 model Invite {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  senderId    String?    @db.ObjectId
-  recieverId  String?    @db.ObjectId
+  senderId    String?    
+  recieverId  String?    
   content     String
   accepted    Boolean    @default(false)
   workSpaceId String?    @db.ObjectId
