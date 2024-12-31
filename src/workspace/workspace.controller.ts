@@ -6,9 +6,11 @@ import {
   Patch,
   Param,
   Delete,
+  Req,
 } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import { Prisma } from '@prisma/client';
+import { Request } from 'express';
 
 @Controller('workspace')
 export class WorkspaceController {
@@ -20,8 +22,8 @@ export class WorkspaceController {
   }
 
   @Get()
-  findAll() {
-    return this.workspaceService.findAll();
+  findByUserId(@Req() req: Request) {
+    return this.workspaceService.findByUser(req['user'].id);
   }
 
   @Get(':id')

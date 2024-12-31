@@ -17,12 +17,16 @@ export class WorkspaceService implements OnModuleInit {
         'user-events',
         async (message) => {
           if (message.key === 'user-created') {
-            const { userId } = message.value;
+            const { userId, firstName } = message.value;
             console.log(`User created: ${userId}`);
 
             // Create default workspace
             await this.databaseService.workSpace.create({
-              data: { userId, name: 'Default Workspace', type: 'PERSONAL' },
+              data: {
+                userId,
+                name: `${firstName}'s Workspace`,
+                type: 'PERSONAL',
+              },
             });
           }
         },
@@ -47,6 +51,27 @@ export class WorkspaceService implements OnModuleInit {
   async findAll() {
     try {
       return await this.databaseService.workSpace.findMany();
+    } catch (error) {
+      throw new Error(`Failed to retrieve workspaces: ${error.message}`);
+    }
+  }
+
+  async findByUser(userId: string) {
+    try {
+      const owned = await this.databaseService.workSpace.findMany({
+        where: {
+          userId,
+        },
+      });
+      const member = await this.databaseService.workSpace.findMany({
+        where: {
+          members: {
+            some: { userId },
+          },
+        },
+      });
+
+      return { owned, member };
     } catch (error) {
       throw new Error(`Failed to retrieve workspaces: ${error.message}`);
     }
