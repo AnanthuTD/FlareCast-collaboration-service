@@ -11,7 +11,7 @@ model WorkSpace {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   type      Type
   name      String
-  userId    String 
+  userId    String
   createdAt DateTime @default(now())
   folders   Folder[]
   members   Member[]
@@ -22,18 +22,22 @@ model WorkSpace {
 }
 
 model Folder {
-  id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  name        String     @default("Untitled Folder")
-  createdAt   DateTime   @default(now())
-  workspaceId String?    @db.ObjectId
-  Workspace   WorkSpace? @relation(fields: [workspaceId], references: [id])
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  name           String     @default("Untitled Folder")
+  createdAt      DateTime   @default(now())
+  workspaceId    String?    @db.ObjectId
+  Workspace      WorkSpace? @relation(fields: [workspaceId], references: [id])
+  parentFolderId String?    @db.ObjectId
+  ParentFolder   Folder?    @relation("ParentChilds", fields: [parentFolderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  childFolders   Folder[]   @relation("ParentChilds")
 
   @@index([workspaceId])
+  @@index([parentFolderId])
 }
 
 model Member {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String?    
+  userId      String?
   createdAt   DateTime   @default(now())
   member      Boolean    @default(true)
   workspaceId String?    @db.ObjectId
@@ -45,8 +49,8 @@ model Member {
 
 model Invite {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  senderId    String?    
-  recieverId  String?    
+  senderId    String?
+  recieverId  String?
   content     String
   accepted    Boolean    @default(false)
   workspaceId String?    @db.ObjectId

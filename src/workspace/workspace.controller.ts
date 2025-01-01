@@ -7,10 +7,11 @@ import {
   Param,
   Delete,
   Req,
+  Query,
 } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import { Prisma } from '@prisma/client';
-import { Request } from 'express';
+// import { Request } from 'express';
 
 @Controller('workspace')
 export class WorkspaceController {
@@ -42,5 +43,59 @@ export class WorkspaceController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.workspaceService.remove(id);
+  }
+
+  @Get(':workspaceId/folders')
+  findFolders(
+    @Param('workspaceId') workspaceId: string,
+    @Query('folderId') parentFolderId: string,
+    @Req() req: Request,
+  ) {
+    return this.workspaceService.findFolders(
+      workspaceId,
+      req['user'].id,
+      parentFolderId,
+    );
+  }
+
+  @Post(':workspaceId/folder')
+  createFolder(
+    @Param('workspaceId') workspaceId: string,
+    @Body('folderId') parentFolderId: string,
+    @Req() req: Request,
+  ) {
+    return this.workspaceService.createFolder(
+      workspaceId,
+      req['user'].id,
+      parentFolderId,
+    );
+  }
+
+  @Delete(':workspaceId/folder/:folderId')
+  deleteFolder(
+    @Param('workspaceId') workspaceId: string,
+    @Param('folderId') folderId: string,
+    @Req() req: Request,
+  ) {
+    return this.workspaceService.deleteFolder(
+      workspaceId,
+      req['user'].id,
+      folderId,
+    );
+  }
+
+  @Patch(':workspaceId/folder/:folderId')
+  renameFolder(
+    @Param('workspaceId') workspaceId: string,
+    @Param('folderId') folderId: string,
+    @Body() { name },
+    @Req() req: Request,
+  ) {
+    return this.workspaceService.renameFolder(
+      workspaceId,
+      req['user'].id,
+      folderId,
+      name,
+    );
   }
 }

@@ -134,4 +134,126 @@ export class WorkspaceService implements OnModuleInit {
       throw new Error(`Failed to delete workspace: ${error.message}`);
     }
   }
+
+  async isUserMemberOfWorkspace({
+    workspaceId,
+    userId,
+  }: {
+    workspaceId: string;
+    userId: string;
+  }): Promise<boolean> {
+    return !!(await this.databaseService.workSpace.findFirst({
+      where: {
+        OR: [
+          {
+            id: workspaceId,
+            userId: userId,
+          },
+          {
+            id: workspaceId,
+            members: {
+              some: { userId },
+            },
+          },
+        ],
+      },
+    }));
+  }
+
+  async findFolders(workspaceId: string, userId: string, folderId?: string) {
+    if (!this.isUserMemberOfWorkspace({ workspaceId, userId })) {
+      throw new NotFoundException(
+        'User is not a member of the workspace or the workspace does not exist',
+      );
+    }
+
+    if (folderId) {
+      return await this.databaseService.folder.findMany({
+        where: {
+          workspaceId,
+          parentFolderId: folderId,
+        },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          workspaceId: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    }
+
+    return await this.databaseService.folder.findMany({
+      where: {
+        workspaceId,
+      },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        workspaceId: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async createFolder(workspaceId: string, userId: string, folderId?: string) {
+    if (!this.isUserMemberOfWorkspace({ workspaceId, userId })) {
+      throw new NotFoundException(
+        'User is not a member of the workspace or the workspace does not exist',
+      );
+    }
+
+    const folder = await this.databaseService.folder.create({
+      data: {
+        workspaceId,
+        name: 'Untitled Folder',
+        parentFolderId: folderId || null,
+      },
+    });
+
+    console.log(folder);
+
+    return folder;
+  }
+
+  async deleteFolder(workspaceId: string, userId: string, folderId: string) {
+    if (!this.isUserMemberOfWorkspace({ workspaceId, userId })) {
+      throw new NotFoundException(
+        'User is not a member of the workspace or the workspace does not exist',
+      );
+    }
+
+    this.databaseService.folder.deleteMany({
+      where: { parentFolderId: folderId },
+    });
+
+    return await this.databaseService.folder.delete({
+      where: { id: folderId },
+    });
+  }
+
+  async renameFolder(
+    workspaceId: string,
+    userId: string,
+    folderId: string,
+    newName: string,
+  ) {
+    if (!this.isUserMemberOfWorkspace({ workspaceId, userId })) {
+      throw new NotFoundException(
+        'User is not a member of the workspace or the workspace does not exist',
+      );
+    }
+
+    console.log(newName);
+
+    return await this.databaseService.folder.update({
+      where: { id: folderId },
+      data: { name: newName },
+    });
+  }
 }
