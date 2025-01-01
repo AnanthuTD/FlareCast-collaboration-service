@@ -25,10 +25,10 @@ model Folder {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
   name        String     @default("Untitled Folder")
   createdAt   DateTime   @default(now())
-  workSpaceId String?    @db.ObjectId
-  WorkSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
+  workspaceId String?    @db.ObjectId
+  Workspace   WorkSpace? @relation(fields: [workspaceId], references: [id])
 
-  @@index([workSpaceId])
+  @@index([workspaceId])
 }
 
 model Member {
@@ -36,11 +36,11 @@ model Member {
   userId      String?    
   createdAt   DateTime   @default(now())
   member      Boolean    @default(true)
-  workSpaceId String?    @db.ObjectId
-  WorkSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
+  workspaceId String?    @db.ObjectId
+  Workspace   WorkSpace? @relation(fields: [workspaceId], references: [id])
 
   @@index([userId])
-  @@index([workSpaceId])
+  @@index([workspaceId])
 }
 
 model Invite {
@@ -49,12 +49,12 @@ model Invite {
   recieverId  String?    
   content     String
   accepted    Boolean    @default(false)
-  workSpaceId String?    @db.ObjectId
-  WorkSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
+  workspaceId String?    @db.ObjectId
+  Workspace   WorkSpace? @relation(fields: [workspaceId], references: [id])
 
   @@index([senderId])
   @@index([recieverId])
-  @@index([workSpaceId])
+  @@index([workspaceId])
 }
 
 enum Type {
