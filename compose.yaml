@@ -1,0 +1,47 @@
+volumes:
+  collaboration-db-data:
+
+networks:
+  collaboration-network:
+    driver: bridge
+  kafka_kafka-network:
+    external: true
+
+services:
+  collaboration-app:
+    build: .
+    container_name: collaboration-app
+    image: ananthutd2003/flarecast-collaboration-service
+    depends_on:
+      collaboration-db:
+        condition: service_healthy
+    env_file:
+      - .env
+    develop:
+      watch:
+        - path: .
+          target: /usr/src/app
+          action: sync
+    ports:
+      - "${PORT}:${PORT}"
+    networks:
+      - collaboration-network
+      - kafka_kafka-network
+    command: ["pnpm", "start:dev"]
+
+  collaboration-db:
+    image: mongo:latest
+    container_name: collaboration-db
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    volumes:
+      - collaboration-db-data:/data/db
+    networks:
+      - collaboration-network
+    ports:
+      - 27018:27017
+    healthcheck:
+      test: echo "try {rs.status()} catch(err) {rs.initiate({_id:'rs0',members:[{_id:0,host:'collaboration-db:27017',priority:1}]})}" | mongosh --port 27017 --quiet
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 10s

@@ -98,4 +98,17 @@ export class WorkspaceController {
       name,
     );
   }
+
+  @Get(':workspaceId/folder/:folderId/parents')
+  getParentFolders(
+    @Param('workspaceId') workspaceId: string,
+    @Param('folderId') folderId: string,
+    @Req() req: Request,
+  ) {
+    return this.workspaceService.getParentFolders(
+      workspaceId,
+      req['user'].id,
+      folderId,
+    );
+  }
 }

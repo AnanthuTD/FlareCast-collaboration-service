@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: collaboration-db
+  labels:
+    app: collaboration-db
+spec:
+  serviceName: "collaboration-db"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: collaboration-db
+  template:
+    metadata:
+      labels:
+        app: collaboration-db
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:latest
+          command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+          ports:
+            - containerPort: 27017
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "echo \"try {rs.status()} catch(err) {rs.initiate({_id:'rs0',members:[{_id:0,host:'collaboration-db-0:27017',priority:1}]})}\" | mongosh --quiet"
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+          - mountPath: /data/db
+            name: collaboration-db-storage
+          resources:
+            requests:
+              memory: "128Mi"  # Reduced from 256Mi
+              cpu: "200m"      # Reduced from 500m
+            limits:
+              memory: "256Mi"  # Reduced from 512Mi
+              cpu: "400m"      # Reduced from 1
+      volumes:
+      - name: collaboration-db-storage
+        persistentVolumeClaim:
+          claimName: collaboration-db-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collaboration-db
+spec:
+  selector:
+    app: collaboration-db
+  ports:
+  - protocol: TCP
+    port: 27017
+    targetPort: 27017
