@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { KafkaService } from 'src/kafka/kafka.service';
+import { logger } from 'src/logger/logger';
 
 @Injectable()
 export class WorkspaceService implements OnModuleInit {
@@ -18,7 +19,7 @@ export class WorkspaceService implements OnModuleInit {
         async (message) => {
           if (message.key === 'user-created') {
             const { userId, firstName } = message.value;
-            console.log(`User created: ${userId}`);
+            logger.info(`User created: ${userId}`);
 
             // Create default workspace
             await this.databaseService.workSpace.create({
@@ -32,7 +33,7 @@ export class WorkspaceService implements OnModuleInit {
         },
       );
     } catch (error) {
-      console.error('Failed to subscribe to Kafka topic:', error.message);
+      logger.error('Failed to subscribe to Kafka topic:', error.message);
     }
   }
 
@@ -217,7 +218,7 @@ export class WorkspaceService implements OnModuleInit {
       },
     });
 
-    console.log(folder);
+    logger.info(folder);
 
     return folder;
   }
@@ -250,7 +251,7 @@ export class WorkspaceService implements OnModuleInit {
       );
     }
 
-    console.log(newName);
+    logger.info(newName);
 
     return await this.databaseService.folder.update({
       where: { id: folderId },
@@ -309,7 +310,7 @@ export class WorkspaceService implements OnModuleInit {
 
       return { parentFolders };
     } catch (error) {
-      console.error('Failed to find parent folders', error);
+      logger.error('Failed to find parent folders', error);
       return { parentFolders: [] };
     }
   }

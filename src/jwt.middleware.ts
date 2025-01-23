@@ -1,15 +1,16 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
+import { logger } from './logger/logger';
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
-    console.log('================ In jwt middleware =================');
+    logger.info('================ In jwt middleware =================');
     const authHeader = req.headers['authorization'];
 
     if (!authHeader) {
-      console.error('No authorization header found');
+      logger.error('No authorization header found');
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
@@ -22,13 +23,13 @@ export class JwtMiddleware implements NestMiddleware {
           process.env.ACCESS_TOKEN_SECRET,
         ) as any;
 
-        console.log('================================');
-        console.log('Decoded token:', decoded);
-        console.log('================================');
+        logger.info('================================');
+        logger.info('Decoded token:', decoded);
+        logger.info('================================');
 
         req['user'] = decoded; // Attach user data to the request object
       } catch (err) {
-        console.error('JWT verification failed:', err.message);
+        logger.error('JWT verification failed:', err.message);
       }
     }
     next();

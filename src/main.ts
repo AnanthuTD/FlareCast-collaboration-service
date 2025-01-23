@@ -1,12 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { logger } from './logger/logger';
 // import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 declare const module: any;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  console.log('kafka broker', process.env.KAFKA_BROKER);
+  logger.info('kafka broker', process.env.KAFKA_BROKER);
 
   // Kafka microservice
   /* app.connectMicroservice<MicroserviceOptions>({

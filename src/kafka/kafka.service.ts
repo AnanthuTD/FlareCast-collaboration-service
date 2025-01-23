@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Kafka, Consumer } from 'kafkajs';
+import { logger } from 'src/logger/logger';
 
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
@@ -22,12 +23,12 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     await this.consumer.connect();
-    console.log('Kafka consumer connected');
+    logger.info('Kafka consumer connected');
   }
 
   async onModuleDestroy() {
     await this.consumer.disconnect();
-    console.log('Kafka consumer disconnected');
+    logger.info('Kafka consumer disconnected');
   }
 
   async subscribeToTopic(
