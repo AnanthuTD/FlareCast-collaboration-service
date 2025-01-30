@@ -7,15 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id         String      @id @map("_id") @db.ObjectId
+  email      String
+  name       String
+  workspaces WorkSpace[]
+  Invite     Invite[]
+
+  @@index([email])
+}
+
 model WorkSpace {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  type      Type
+  type      Type     @default(PERSONAL)
   name      String
-  userId    String
+  userId    String   @db.ObjectId
   createdAt DateTime @default(now())
   folders   Folder[]
   members   Member[]
   invite    Invite[]
+  User      User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([name])
@@ -36,29 +47,32 @@ model Folder {
 }
 
 model Member {
-  id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String?
-  createdAt   DateTime   @default(now())
-  member      Boolean    @default(true)
-  workspaceId String?    @db.ObjectId
-  Workspace   WorkSpace? @relation(fields: [workspaceId], references: [id])
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String
+  createdAt   DateTime  @default(now())
+  member      Boolean   @default(true)
+  workspaceId String    @db.ObjectId
+  Workspace   WorkSpace @relation(fields: [workspaceId], references: [id])
 
   @@index([userId])
   @@index([workspaceId])
 }
 
 model Invite {
-  id          String     @id @default(auto()) @map("_id") @db.ObjectId
-  senderId    String?
-  recieverId  String?
-  content     String
-  accepted    Boolean    @default(false)
-  workspaceId String?    @db.ObjectId
-  Workspace   WorkSpace? @relation(fields: [workspaceId], references: [id])
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  senderId    String
+  receiverId  String    @db.ObjectId
+  content     String?
+  accepted    Boolean   @default(false)
+  workspaceId String    @db.ObjectId
+  Workspace   WorkSpace @relation(fields: [workspaceId], references: [id])
+  updatedAt   DateTime  @default(now())
+  User        User      @relation(fields: [receiverId], references: [id])
 
+  @@unique([workspaceId, receiverId])
   @@index([senderId])
-  @@index([recieverId])
   @@index([workspaceId])
+  @@index([receiverId])
 }
 
 enum Type {

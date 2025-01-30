@@ -11,15 +11,21 @@ import {
 } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import { Prisma } from '@prisma/client';
-// import { Request } from 'express';
+import { User, UserType } from 'src/decorators/user.decorator';
 
 @Controller('workspace')
 export class WorkspaceController {
   constructor(private readonly workspaceService: WorkspaceService) {}
 
   @Post()
-  create(@Body() createWorkspaceDto: Prisma.WorkSpaceCreateInput) {
-    return this.workspaceService.create(createWorkspaceDto);
+  create(
+    @Body() createWorkspaceDto: { name: string; members: string[] },
+    @User() user: UserType,
+  ) {
+    return this.workspaceService.create({
+      ...createWorkspaceDto,
+      userId: user.id,
+    });
   }
 
   @Get()
@@ -110,5 +116,14 @@ export class WorkspaceController {
       req['user'].id,
       folderId,
     );
+  }
+
+  @Post(':workspaceId/invite')
+  inviteMembers(
+    @Param('workspaceId') workspaceId: string,
+    @User() user: UserType,
+    @Body('invites') invites: string[],
+  ) {
+    return this.workspaceService.inviteMembers(workspaceId, user.id, invites);
   }
 }

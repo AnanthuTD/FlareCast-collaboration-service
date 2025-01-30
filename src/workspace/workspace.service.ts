@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
-import { KafkaService } from 'src/kafka/kafka.service';
+import { KafkaService, Topics } from 'src/kafka/kafka.service';
 import { logger } from 'src/logger/logger';
+import { emailSchema } from 'src/schema/email.schema';
 
 @Injectable()
 export class WorkspaceService implements OnModuleInit {
@@ -17,19 +24,19 @@ export class WorkspaceService implements OnModuleInit {
       await this.kafkaService.subscribeToTopic(
         'user-events',
         async (message) => {
-          if (message.key === 'user-created') {
-            const { userId, firstName } = message.value;
-            logger.info(`User created: ${userId}`);
+          // if (message.key === 'user-created') {
+          const { userId, firstName } = message.value;
+          logger.info(`User created: ${userId}`);
 
-            // Create default workspace
-            await this.databaseService.workSpace.create({
-              data: {
-                userId,
-                name: `${firstName}'s Workspace`,
-                type: 'PERSONAL',
-              },
-            });
-          }
+          // Create default workspace
+          await this.databaseService.workSpace.create({
+            data: {
+              userId,
+              name: `${firstName}'s Workspace`,
+              type: 'PERSONAL',
+            },
+          });
+          // }
         },
       );
     } catch (error) {
@@ -38,11 +45,58 @@ export class WorkspaceService implements OnModuleInit {
   }
 
   // Create a new workspace
-  async create(createWorkspaceDto: Prisma.WorkSpaceCreateInput) {
+  async create(createWorkspaceDto: {
+    name: string;
+    userId: string;
+    members?: string[];
+  }) {
+    if (createWorkspaceDto.members.length > 0) {
+      for (const email of createWorkspaceDto.members) {
+        try {
+          emailSchema.parse({ email });
+        } catch {
+          throw new BadRequestException('Invalid email address: ' + email);
+        }
+      }
+    }
+
+    const workSpace = await this.databaseService.workSpace.create({
+      data: {
+        name: createWorkspaceDto.name,
+        userId: createWorkspaceDto.userId,
+      },
+    });
+
     try {
-      return await this.databaseService.workSpace.create({
-        data: createWorkspaceDto,
-      });
+      if (createWorkspaceDto.members.length > 0) {
+        const users = await this.databaseService.user.findMany({
+          where: { email: { in: createWorkspaceDto.members } },
+          select: { id: true },
+        });
+
+        await this.databaseService.invite.createMany({
+          data: users.map((user) => ({
+            workspaceId: workSpace.id,
+            senderId: createWorkspaceDto.userId,
+            receiverId: user.id,
+          })),
+        });
+
+        const invitationData = {
+          workspaceId: workSpace.id,
+          workspaceName: workSpace.name,
+          senderId: createWorkspaceDto.userId,
+          receiverEmail: createWorkspaceDto.members,
+        };
+
+        this.kafkaService.sendMessageToTopic(
+          Topics.WORKSPACE_INVITATION,
+          'Invitation',
+          invitationData,
+        );
+      }
+
+      return workSpace;
     } catch (error) {
       throw new Error(`Failed to create workspace: ${error.message}`);
     }
@@ -312,6 +366,92 @@ export class WorkspaceService implements OnModuleInit {
     } catch (error) {
       logger.error('Failed to find parent folders', error);
       return { parentFolders: [] };
+    }
+  }
+
+  async userHasInviteAuthority(workspaceId: string, userId: string) {
+    const workSpace = await this.databaseService.workSpace.findFirst({
+      where: { id: workspaceId, userId },
+    });
+
+    return workSpace;
+  }
+
+  async inviteMembers(workspaceId: string, userId: string, invites: string[]) {
+    try {
+      // Check if the user has authority to invite members
+      const workspaceData = await this.userHasInviteAuthority(
+        workspaceId,
+        userId,
+      );
+
+      if (!workspaceData) {
+        throw new Error('User does not have authority to invite members');
+      }
+
+      // Find users with the provided emails
+      const users = await this.databaseService.user.findMany({
+        where: { email: { in: invites } },
+      });
+
+      if (!users.length) {
+        throw new Error(
+          `No valid email addresses found: ${invites.join(', ')}`,
+        );
+      }
+
+      // Find existing members in the workspace
+      const members = await this.databaseService.member.findMany({
+        where: {
+          workspaceId,
+          userId: { in: users.map((user) => user.id) },
+        },
+      });
+
+      // Filter out users who are already members
+      const notJoined = users.filter(
+        (user) => !members.some((member) => member.userId === user.id),
+      );
+
+      // Send invitations to users who are not already members
+      for (const user of notJoined) {
+        const existingInvite = await this.databaseService.invite.findFirst({
+          where: { workspaceId, receiverId: user.id },
+        });
+
+        if (!existingInvite) {
+          await this.databaseService.invite.create({
+            data: {
+              workspaceId,
+              senderId: userId,
+              receiverId: user.id,
+            },
+          });
+        } else {
+          await this.databaseService.invite.update({
+            where: { id: existingInvite.id },
+            data: { updatedAt: new Date() },
+          });
+        }
+      }
+
+      // Send Kafka message for invitations
+      await this.kafkaService.sendMessageToTopic(
+        Topics.WORKSPACE_INVITATION,
+        'Invitation',
+        {
+          invites: notJoined.map((user) => user.email),
+          workspaceName: workspaceData.name,
+        },
+      );
+
+      // Return success response
+      return { success: true };
+    } catch (error) {
+      logger.error(`Failed to invite members: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(
+        `Failed to invite members: ${error.message}`,
+      );
     }
   }
 }
