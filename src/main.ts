@@ -1,31 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { logger } from './logger/logger';
-// import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { Logger } from 'nestjs-pino';
 declare const module: any;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.useLogger(app.get(Logger));
 
-  logger.info('kafka broker', process.env.KAFKA_BROKER);
-
-  // Kafka microservice
-  /* app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.KAFKA,
-    options: {
-      client: {
-        brokers: [process.env.KAFKA_BROKER],
-        sasl: {
-          mechanism: 'plain',
-          username: process.env.KAFKA_USERNAME,
-          password: process.env.KAFKA_PASSWORD,
-        },
-      },
-    },
-  }); */
-
-  // await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3001);
+  await app.listen(process.env.PORT);
 
   if (module.hot) {
     module.hot.accept();

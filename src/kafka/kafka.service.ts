@@ -1,6 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { Kafka, Consumer, Producer } from 'kafkajs';
-import { logger } from 'src/logger/logger';
 
 export enum Topics {
   WORKSPACE_INVITATION = 'workspace-invitation',
@@ -8,6 +12,7 @@ export enum Topics {
 
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(KafkaService.name);
   private kafka: Kafka;
   private consumer: Consumer;
   private producer: Producer;
@@ -30,12 +35,12 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.consumer.connect();
     await this.producer.connect();
-    logger.info('Kafka consumer connected');
+    this.logger.log('Kafka consumer connected');
   }
 
   async onModuleDestroy() {
     await this.consumer.disconnect();
-    logger.info('Kafka consumer disconnected');
+    this.logger.log('Kafka consumer disconnected');
   }
 
   async subscribeToTopic(

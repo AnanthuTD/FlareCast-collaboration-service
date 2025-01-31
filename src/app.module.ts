@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { JwtMiddleware } from './jwt.middleware';
 import { LoggerModule } from 'nestjs-pino';
+import { LokiOptions } from 'pino-loki';
 
 @Module({
   imports: [
@@ -14,14 +15,31 @@ import { LoggerModule } from 'nestjs-pino';
     KafkaModule,
     LoggerModule.forRoot({
       pinoHttp: {
-        level: 'info', // Adjust log level (e.g., 'debug', 'info', 'warn', 'error')
+        level: 'debug',
         transport: {
-          target: 'pino-pretty',
-          options: {
-            colorize: true, // Colorize output for better readability in development
-            translateTime: true, // Add timestamps in logs
-            ignore: 'pid,hostname', // Exclude specific fields
-          },
+          targets: [
+            {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                translateTime: true,
+                ignore: 'pid,hostname',
+              },
+            },
+            {
+              target: 'pino-loki',
+              options: {
+                batching: true,
+                interval: 5,
+                host: process.env.GRAFANA_HOST || 'http://localhost:3100',
+                basicAuth: {
+                  username: process.env.LOKI_USER_ID || '',
+                  password: process.env.LOKI_API_KEY || '',
+                },
+                labels: { app: 'collaboration-service' },
+              } as LokiOptions,
+            },
+          ],
         },
         serializers: {
           req(req) {

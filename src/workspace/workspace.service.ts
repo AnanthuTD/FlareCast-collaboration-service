@@ -2,17 +2,19 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { KafkaService, Topics } from 'src/kafka/kafka.service';
-import { logger } from 'src/logger/logger';
 import { emailSchema } from 'src/schema/email.schema';
 
 @Injectable()
 export class WorkspaceService implements OnModuleInit {
+  private readonly logger = new Logger(WorkspaceService.name);
+
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly kafkaService: KafkaService,
@@ -26,7 +28,7 @@ export class WorkspaceService implements OnModuleInit {
         async (message) => {
           // if (message.key === 'user-created') {
           const { userId, firstName } = message.value;
-          logger.info(`User created: ${userId}`);
+          this.logger.log(`User created: ${userId}`);
 
           // Create default workspace
           await this.databaseService.workSpace.create({
@@ -40,7 +42,7 @@ export class WorkspaceService implements OnModuleInit {
         },
       );
     } catch (error) {
-      logger.error('Failed to subscribe to Kafka topic:', error.message);
+      this.logger.error('Failed to subscribe to Kafka topic:', error.message);
     }
   }
 
@@ -272,7 +274,7 @@ export class WorkspaceService implements OnModuleInit {
       },
     });
 
-    logger.info(folder);
+    this.logger.log(folder);
 
     return folder;
   }
@@ -305,7 +307,7 @@ export class WorkspaceService implements OnModuleInit {
       );
     }
 
-    logger.info(newName);
+    this.logger.log(newName);
 
     return await this.databaseService.folder.update({
       where: { id: folderId },
@@ -364,7 +366,7 @@ export class WorkspaceService implements OnModuleInit {
 
       return { parentFolders };
     } catch (error) {
-      logger.error('Failed to find parent folders', error);
+      this.logger.error('Failed to find parent folders', error);
       return { parentFolders: [] };
     }
   }
@@ -448,7 +450,10 @@ export class WorkspaceService implements OnModuleInit {
       // Return success response
       return { success: true };
     } catch (error) {
-      logger.error(`Failed to invite members: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to invite members: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException(
         `Failed to invite members: ${error.message}`,
       );
