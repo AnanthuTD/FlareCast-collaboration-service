@@ -1,15 +1,38 @@
 import {
   BadRequestException,
   Injectable,
-  InternalServerErrorException,
   Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { KafkaService, Topics } from 'src/kafka/kafka.service';
-import { emailSchema } from 'src/schema/email.schema';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { ValidationService } from 'src/common/validations/validations.service';
+
+export enum NOTIFICATION_EVENT_TYPE {
+  FIRST_VIEW = 'firstView',
+  COMMENT = 'comment',
+  TRANSCRIPT_SUCCESS = 'transcript-success',
+  TRANSCRIPT_FAILURE = 'transcript-failure',
+  WORKSPACE_REMOVE = 'workspace-remove',
+  WORKSPACE_DELETE = 'workspace-delete',
+  VIDEO_SHARE = 'video-share',
+  WORKSPACE_INVITATION = 'workspace-invitation',
+}
+
+export interface WorkspaceInvitationNotificationEvent {
+  eventType: NOTIFICATION_EVENT_TYPE.WORKSPACE_INVITATION;
+  senderId: string;
+  invites: {
+    receiverEmail: string;
+    url: string;
+    receiverId?: string;
+  }[];
+  workspaceId: string;
+  workspaceName: string;
+  timestamp: number;
+}
 
 @Injectable()
 export class WorkspaceService implements OnModuleInit {
@@ -18,6 +41,7 @@ export class WorkspaceService implements OnModuleInit {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly kafkaService: KafkaService,
+    private readonly validationService: ValidationService,
   ) {}
 
   /* listen to user-created topic and create a new personal workspace for every new user */
@@ -25,20 +49,28 @@ export class WorkspaceService implements OnModuleInit {
     try {
       await this.kafkaService.subscribeToTopic(
         'user-events',
-        async (message) => {
-          // if (message.key === 'user-created') {
-          const { userId, firstName } = message.value;
-          this.logger.log(`User created: ${userId}`);
+        async (topic, message) => {
+          if (topic === 'user-events') {
+            const { userId, firstName, email } = message.value;
+            this.logger.log(`User created: ${userId}`);
 
-          // Create default workspace
-          await this.databaseService.workSpace.create({
-            data: {
-              userId,
-              name: `${firstName}'s Workspace`,
-              type: 'PERSONAL',
-            },
-          });
-          // }
+            await this.databaseService.$transaction([
+              this.databaseService.user.upsert({
+                where: { id: userId },
+                create: { email, name: firstName, id: userId },
+                update: { name: firstName },
+              }),
+
+              // create default workspace
+              this.databaseService.workSpace.create({
+                data: {
+                  userId,
+                  name: `${firstName}'s Workspace`,
+                  type: 'PERSONAL',
+                },
+              }),
+            ]);
+          }
         },
       );
     } catch (error) {
@@ -52,55 +84,107 @@ export class WorkspaceService implements OnModuleInit {
     userId: string;
     members?: string[];
   }) {
-    if (createWorkspaceDto.members.length > 0) {
-      for (const email of createWorkspaceDto.members) {
-        try {
-          emailSchema.parse({ email });
-        } catch {
-          throw new BadRequestException('Invalid email address: ' + email);
-        }
-      }
-    }
-
-    const workSpace = await this.databaseService.workSpace.create({
-      data: {
-        name: createWorkspaceDto.name,
-        userId: createWorkspaceDto.userId,
-      },
+    // Validate userId before proceeding
+    const userExists = await this.databaseService.user.findUnique({
+      where: { id: createWorkspaceDto.userId },
+      select: { id: true },
     });
 
+    if (!userExists) {
+      throw new BadRequestException('Invalid userId: User does not exist.');
+    }
+
+    const members = createWorkspaceDto.members ?? [];
+
+    // Validate emails before proceeding
+    for (const email of members) {
+      this.validationService.validate('email', { email });
+    }
+
     try {
-      if (createWorkspaceDto.members.length > 0) {
-        const users = await this.databaseService.user.findMany({
-          where: { email: { in: createWorkspaceDto.members } },
-          select: { id: true },
+      return await this.databaseService.$transaction(async (tx) => {
+        // Create workspace
+        const workSpace = await tx.workSpace.create({
+          data: {
+            name: createWorkspaceDto.name,
+            userId: createWorkspaceDto.userId,
+          },
         });
 
-        await this.databaseService.invite.createMany({
-          data: users.map((user) => ({
-            workspaceId: workSpace.id,
-            senderId: createWorkspaceDto.userId,
-            receiverId: user.id,
-          })),
+        if (members.length === 0) return workSpace;
+
+        // Find existing users by email
+        const users = await tx.user.findMany({
+          where: { email: { in: members } },
+          select: { id: true, email: true },
         });
 
-        const invitationData = {
-          workspaceId: workSpace.id,
-          workspaceName: workSpace.name,
-          senderId: createWorkspaceDto.userId,
-          receiverEmail: createWorkspaceDto.members,
-        };
-
-        this.kafkaService.sendMessageToTopic(
-          Topics.WORKSPACE_INVITATION,
-          'Invitation',
-          invitationData,
+        const existingUserEmails = new Set(users.map((u) => u.email));
+        const unregisteredMembers = members.filter(
+          (email) => !existingUserEmails.has(email),
         );
-      }
 
-      return workSpace;
+        const invitationData = [];
+
+        // Insert invitations for registered users
+        if (users.length > 0) {
+          invitationData.push(
+            ...users.map((user) => ({
+              workspaceId: workSpace.id,
+              senderId: createWorkspaceDto.userId,
+              receiverId: user.id,
+              receiverEmail: user.email,
+              invitationStatus: 'PENDING',
+            })),
+          );
+        }
+
+        // Insert invitations for unregistered users
+        if (unregisteredMembers.length > 0) {
+          invitationData.push(
+            ...unregisteredMembers.map((email) => ({
+              workspaceId: workSpace.id,
+              senderId: createWorkspaceDto.userId,
+              receiverEmail: email,
+              invitationStatus: 'PENDING',
+            })),
+          );
+        }
+
+        // Bulk insert invitations
+        if (invitationData.length > 0) {
+          await tx.invite.createMany({ data: invitationData });
+        }
+
+        // Send Kafka notification if invitations were created
+        if (invitationData.length > 0) {
+          const invites: WorkspaceInvitationNotificationEvent['invites'] =
+            invitationData.map((invite) => ({
+              receiverEmail: invite.receiverEmail,
+              url: `${process.env.COLLABORATION_HOST_URL ?? ''}/invitation?token=${invite.workspaceId}`,
+              receiverId: invite?.receiverId,
+            }));
+
+          this.kafkaService.sendMessageToTopic(
+            Topics.WORKSPACE_INVITATION,
+            'Invitation',
+            {
+              workspaceId: workSpace.id,
+              workspaceName: workSpace.name,
+              senderId: createWorkspaceDto.userId,
+              invites,
+              eventType: NOTIFICATION_EVENT_TYPE.WORKSPACE_INVITATION,
+              timestamp: Date.now(),
+            } as WorkspaceInvitationNotificationEvent,
+          );
+        }
+
+        return workSpace;
+      });
     } catch (error) {
-      throw new Error(`Failed to create workspace: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to create workspace: ${error.message}`,
+      );
     }
   }
 
@@ -150,21 +234,21 @@ export class WorkspaceService implements OnModuleInit {
   }
 
   // Update a workspace by ID
-  async update(id: string, updateWorkspaceDto: Prisma.WorkSpaceUpdateInput) {
+  async update(data: UpdateWorkspaceDto) {
     try {
       const existingWorkspace = await this.databaseService.workSpace.findUnique(
         {
-          where: { id },
+          where: { id: data.id },
         },
       );
 
       if (!existingWorkspace) {
-        throw new NotFoundException(`Workspace with ID ${id} not found`);
+        throw new NotFoundException(`Workspace with ID ${data.id} not found`);
       }
 
       return await this.databaseService.workSpace.update({
-        where: { id },
-        data: updateWorkspaceDto,
+        where: { id: data.id },
+        data: data.updateWorkspaceDto,
       });
     } catch (error) {
       throw new Error(`Failed to update workspace: ${error.message}`);
@@ -189,274 +273,6 @@ export class WorkspaceService implements OnModuleInit {
       });
     } catch (error) {
       throw new Error(`Failed to delete workspace: ${error.message}`);
-    }
-  }
-
-  async isUserMemberOfWorkspace({
-    workspaceId,
-    userId,
-  }: {
-    workspaceId: string;
-    userId: string;
-  }): Promise<boolean> {
-    return !!(await this.databaseService.workSpace.findFirst({
-      where: {
-        OR: [
-          {
-            id: workspaceId,
-            userId: userId,
-          },
-          {
-            id: workspaceId,
-            members: {
-              some: { userId },
-            },
-          },
-        ],
-      },
-    }));
-  }
-
-  async findFolders(workspaceId: string, userId: string, folderId?: string) {
-    if (!(await this.isUserMemberOfWorkspace({ workspaceId, userId }))) {
-      throw new NotFoundException(
-        'User is not a member of the workspace or the workspace does not exist',
-      );
-    }
-
-    if (folderId) {
-      return await this.databaseService.folder.findMany({
-        where: {
-          workspaceId,
-          parentFolderId: folderId,
-        },
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          workspaceId: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-    }
-
-    return await this.databaseService.folder.findMany({
-      where: {
-        workspaceId,
-        parentFolderId: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        createdAt: true,
-        workspaceId: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  async createFolder(workspaceId: string, userId: string, folderId?: string) {
-    if (!(await this.isUserMemberOfWorkspace({ workspaceId, userId }))) {
-      throw new NotFoundException(
-        'User is not a member of the workspace or the workspace does not exist',
-      );
-    }
-
-    const folder = await this.databaseService.folder.create({
-      data: {
-        workspaceId,
-        name: 'Untitled Folder',
-        parentFolderId: folderId || null,
-      },
-    });
-
-    this.logger.log(folder);
-
-    return folder;
-  }
-
-  async deleteFolder(workspaceId: string, userId: string, folderId: string) {
-    if (!(await this.isUserMemberOfWorkspace({ workspaceId, userId }))) {
-      throw new NotFoundException(
-        'User is not a member of the workspace or the workspace does not exist',
-      );
-    }
-
-    this.databaseService.folder.deleteMany({
-      where: { parentFolderId: folderId },
-    });
-
-    return await this.databaseService.folder.delete({
-      where: { id: folderId },
-    });
-  }
-
-  async renameFolder(
-    workspaceId: string,
-    userId: string,
-    folderId: string,
-    newName: string,
-  ) {
-    if (!(await this.isUserMemberOfWorkspace({ workspaceId, userId }))) {
-      throw new NotFoundException(
-        'User is not a member of the workspace or the workspace does not exist',
-      );
-    }
-
-    this.logger.log(newName);
-
-    return await this.databaseService.folder.update({
-      where: { id: folderId },
-      data: { name: newName },
-    });
-  }
-
-  async getParentFolders(
-    workspaceId: string,
-    userId: string,
-    folderId: string,
-  ) {
-    try {
-      if (!(await this.isUserMemberOfWorkspace({ workspaceId, userId }))) {
-        throw new NotFoundException(
-          'User is not a member of the workspace or the workspace does not exist',
-        );
-      }
-
-      const currentFolder = await this.databaseService.folder.findUnique({
-        where: { id: folderId },
-        select: {
-          parentFolderId: true,
-          name: true,
-          createdAt: true,
-          workspaceId: true,
-          id: true,
-        },
-      });
-
-      if (!currentFolder) {
-        return { parentFolders: [] };
-      }
-
-      if (!currentFolder.parentFolderId) {
-        return { parentFolders: [currentFolder] };
-      }
-
-      let parentFolder = currentFolder;
-
-      const parentFolders = [parentFolder];
-
-      while (parentFolder.parentFolderId) {
-        parentFolder = await this.databaseService.folder.findUnique({
-          where: { id: parentFolder.parentFolderId },
-          select: {
-            id: true,
-            name: true,
-            createdAt: true,
-            workspaceId: true,
-            parentFolderId: true,
-          },
-        });
-        parentFolders.unshift(parentFolder);
-      }
-
-      return { parentFolders };
-    } catch (error) {
-      this.logger.error('Failed to find parent folders', error);
-      return { parentFolders: [] };
-    }
-  }
-
-  async userHasInviteAuthority(workspaceId: string, userId: string) {
-    const workSpace = await this.databaseService.workSpace.findFirst({
-      where: { id: workspaceId, userId },
-    });
-
-    return workSpace;
-  }
-
-  async inviteMembers(workspaceId: string, userId: string, invites: string[]) {
-    try {
-      // Check if the user has authority to invite members
-      const workspaceData = await this.userHasInviteAuthority(
-        workspaceId,
-        userId,
-      );
-
-      if (!workspaceData) {
-        throw new Error('User does not have authority to invite members');
-      }
-
-      // Find users with the provided emails
-      const users = await this.databaseService.user.findMany({
-        where: { email: { in: invites } },
-      });
-
-      if (!users.length) {
-        throw new Error(
-          `No valid email addresses found: ${invites.join(', ')}`,
-        );
-      }
-
-      // Find existing members in the workspace
-      const members = await this.databaseService.member.findMany({
-        where: {
-          workspaceId,
-          userId: { in: users.map((user) => user.id) },
-        },
-      });
-
-      // Filter out users who are already members
-      const notJoined = users.filter(
-        (user) => !members.some((member) => member.userId === user.id),
-      );
-
-      // Send invitations to users who are not already members
-      for (const user of notJoined) {
-        const existingInvite = await this.databaseService.invite.findFirst({
-          where: { workspaceId, receiverId: user.id },
-        });
-
-        if (!existingInvite) {
-          await this.databaseService.invite.create({
-            data: {
-              workspaceId,
-              senderId: userId,
-              receiverId: user.id,
-            },
-          });
-        } else {
-          await this.databaseService.invite.update({
-            where: { id: existingInvite.id },
-            data: { updatedAt: new Date() },
-          });
-        }
-      }
-
-      // Send Kafka message for invitations
-      await this.kafkaService.sendMessageToTopic(
-        Topics.WORKSPACE_INVITATION,
-        'Invitation',
-        {
-          invites: notJoined.map((user) => user.email),
-          workspaceName: workspaceData.name,
-        },
-      );
-
-      // Return success response
-      return { success: true };
-    } catch (error) {
-      this.logger.error(
-        `Failed to invite members: ${error.message}`,
-        error.stack,
-      );
-      throw new InternalServerErrorException(
-        `Failed to invite members: ${error.message}`,
-      );
     }
   }
 }

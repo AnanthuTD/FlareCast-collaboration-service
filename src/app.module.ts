@@ -7,6 +7,8 @@ import { KafkaModule } from './kafka/kafka.module';
 import { JwtMiddleware } from './jwt.middleware';
 import { LoggerModule } from 'nestjs-pino';
 import { LokiOptions } from 'pino-loki';
+import { FolderModule } from './folder/folder.module';
+import { InvitationModule } from './invitation/invitation.module';
 
 @Module({
   imports: [
@@ -57,6 +59,8 @@ import { LokiOptions } from 'pino-loki';
         },
       },
     }),
+    FolderModule,
+    InvitationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

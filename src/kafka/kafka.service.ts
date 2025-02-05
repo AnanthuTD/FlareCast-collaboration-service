@@ -28,7 +28,10 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       }, */
     });
 
-    this.consumer = this.kafka.consumer({ groupId: 'collaboration-group' });
+    this.consumer = this.kafka.consumer({
+      groupId: 'collaboration-group',
+      allowAutoTopicCreation: true,
+    });
     this.producer = this.kafka.producer();
   }
 
@@ -45,16 +48,16 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
 
   async subscribeToTopic(
     topic: string,
-    onMessage: (message: any) => Promise<void>,
+    onMessage: (topic: string, message: any) => Promise<void>,
   ) {
     await this.consumer.subscribe({ topic, fromBeginning: false });
 
     await this.consumer.run({
-      eachMessage: async ({ message }) => {
+      eachMessage: async ({ message, topic }) => {
         const { key, value } = message;
 
         if (value) {
-          await onMessage({
+          await onMessage(topic, {
             key: key?.toString(),
             value: JSON.parse(value.toString()),
           });

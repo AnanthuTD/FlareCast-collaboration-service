@@ -21,9 +21,5 @@ export class CreateWorkspaceDto {
 
   @IsArray()
   @IsOptional()
-  memberIds?: string[];
-
-  @IsArray()
-  @IsOptional()
-  inviteIds?: string[];
+  members: string[];
 }

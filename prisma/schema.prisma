@@ -59,20 +59,29 @@ model Member {
 }
 
 model Invite {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  senderId    String
-  receiverId  String    @db.ObjectId
-  content     String?
-  accepted    Boolean   @default(false)
-  workspaceId String    @db.ObjectId
-  Workspace   WorkSpace @relation(fields: [workspaceId], references: [id])
-  updatedAt   DateTime  @default(now())
-  User        User      @relation(fields: [receiverId], references: [id])
+  id               String       @id @default(auto()) @map("_id") @db.ObjectId
+  senderId         String
+  receiverId       String?      @db.ObjectId
+  receiverEmail    String?      @unique
+  content          String?
+  invitationStatus InviteStatus @default(PENDING)
+  workspaceId      String       @db.ObjectId
+  Workspace        WorkSpace    @relation(fields: [workspaceId], references: [id])
+  updatedAt        DateTime    @default(now())
+  User             User?        @relation(fields: [receiverId], references: [id])
 
   @@unique([workspaceId, receiverId])
+  @@unique([workspaceId, receiverEmail])
   @@index([senderId])
   @@index([workspaceId])
   @@index([receiverId])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
 }
 
 enum Type {

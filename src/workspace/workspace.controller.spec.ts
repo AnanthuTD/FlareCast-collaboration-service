@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceController } from './workspace.controller';
 import { WorkspaceService } from './workspace.service';
-import { UserType } from 'src/decorators/user.decorator';
+import { UserType } from 'src/common/decorators/user.decorator';
 import { DatabaseService } from 'src/database/database.service';
 
 describe('WorkspaceController', () => {
