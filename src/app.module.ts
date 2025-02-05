@@ -1,4 +1,9 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { WorkspaceModule } from './workspace/workspace.module';
@@ -67,6 +72,9 @@ import { InvitationModule } from './invitation/invitation.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(JwtMiddleware).forRoutes('*');
+    consumer
+      .apply(JwtMiddleware)
+      .exclude({ path: 'invitation/accept', method: RequestMethod.POST })
+      .forRoutes('*');
   }
 }

@@ -1,14 +1,21 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { Invite } from '@prisma/client';
 import { ValidationService } from 'src/common/validations/validations.service';
 import { WorkspaceMemberService } from 'src/common/workspace-member.service';
 import { DatabaseService } from 'src/database/database.service';
 import { KafkaService, Topics } from 'src/kafka/kafka.service';
+import {
+  NOTIFICATION_EVENT_TYPE,
+  WorkspaceInvitationNotificationEvent,
+} from 'src/workspace/workspace.service';
 
 @Injectable()
 export class InvitationService {
@@ -23,7 +30,7 @@ export class InvitationService {
 
   async create(workspaceId: string, userId: string, invites: string[]) {
     try {
-      // Check if the user has authority to invite members
+      // ✅ Check user authorization
       const workspaceData =
         await this.workspaceMemberService.userHasInviteAuthority({
           workspaceId,
@@ -35,41 +42,43 @@ export class InvitationService {
         );
       }
 
-      // Ensure valid emails before proceeding
-      for (const email of invites) {
-        this.validationService.validate('email', { email });
-      }
+      // ✅ Validate all emails in one go
+      invites.forEach((email) =>
+        this.validationService.validate('email', { email }),
+      );
 
       return await this.databaseService.$transaction(async (tx) => {
-        // Fetch existing users based on email
+        // ✅ Fetch existing users in a single query
         const users = await tx.user.findMany({
           where: { email: { in: invites } },
           select: { id: true, email: true },
         });
 
-        // Get existing members in the workspace
-        const existingMembers = await tx.member.findMany({
-          where: {
-            workspaceId,
-            userId: { in: users.map((user) => user.id) },
-          },
-          select: { userId: true },
-        });
-
-        const existingMemberIds = new Set(existingMembers.map((m) => m.userId));
-
-        // Filter out already joined users
-        const registeredUsersToInvite = users.filter(
-          (user) => !existingMemberIds.has(user.id),
+        // ✅ Get existing workspace members
+        const existingMembers = new Set(
+          (
+            await tx.member.findMany({
+              where: {
+                workspaceId,
+                userId: { in: users.map((user) => user.id) },
+              },
+              select: { userId: true },
+            })
+          ).map((member) => member.userId),
         );
 
-        // Get emails of unregistered users
+        // ✅ Filter registered users who are NOT already in the workspace
+        const registeredUsersToInvite = users.filter(
+          (user) => !existingMembers.has(user.id),
+        );
+
+        // ✅ Get emails of unregistered users
         const registeredEmails = new Set(users.map((user) => user.email));
         const unregisteredEmails = invites.filter(
           (email) => !registeredEmails.has(email),
         );
 
-        // Fetch existing invites (to prevent duplicates)
+        // ✅ Fetch existing invites (to prevent duplicate invites)
         const existingInvites = await tx.invite.findMany({
           where: {
             workspaceId,
@@ -88,7 +97,7 @@ export class InvitationService {
           existingInvites.map((i) => i.receiverEmail),
         );
 
-        // Prepare new invitations
+        // ✅ Prepare new invitations
         const invitesToCreate = [
           ...registeredUsersToInvite
             .filter((user) => !existingInviteIds.has(user.id))
@@ -111,20 +120,38 @@ export class InvitationService {
         ] as unknown as Invite[];
 
         if (invitesToCreate.length > 0) {
-          await tx.invite.createMany({
-            data: invitesToCreate,
-          });
-        }
+          // ✅ Bulk insert invitations
+          await tx.invite.createMany({ data: invitesToCreate });
 
-        // Send Kafka message for invitations
-        await this.kafkaService.sendMessageToTopic(
-          Topics.WORKSPACE_INVITATION,
-          'Invitation',
-          {
-            invites: invitesToCreate.map((invite) => invite.receiverEmail),
-            workspaceName: workspaceData.name,
-          },
-        );
+          // ✅ Fetch inserted invites manually since createMany() doesn't return them
+          const insertedInvites = await tx.invite.findMany({
+            where: {
+              workspaceId,
+              receiverEmail: {
+                in: invitesToCreate.map((i) => i.receiverEmail),
+              },
+            },
+            select: { id: true, receiverEmail: true, receiverId: true },
+          });
+
+          // ✅ Send Kafka Notification
+          await this.kafkaService.sendMessageToTopic(
+            Topics.NOTIFICATION_EVENT,
+            'Invitation',
+            {
+              workspaceId: workspaceData.id,
+              workspaceName: workspaceData.name,
+              senderId: userId,
+              invites: insertedInvites.map((invite) => ({
+                receiverEmail: invite.receiverEmail,
+                url: `${process.env.FRONTEND_INVITATION_ROUTE ?? ''}?token=${invite.id}`,
+                receiverId: invite.receiverId,
+              })),
+              eventType: NOTIFICATION_EVENT_TYPE.WORKSPACE_INVITATION,
+              timestamp: Date.now(),
+            } as WorkspaceInvitationNotificationEvent,
+          );
+        }
 
         return { success: true, invitedCount: invitesToCreate.length };
       });
@@ -137,5 +164,72 @@ export class InvitationService {
         `Failed to invite members: ${error.message}`,
       );
     }
+  }
+
+  async accept(token: string) {
+    if (!token) throw new BadRequestException('Token is required');
+
+    return await this.databaseService.$transaction(async (tx) => {
+      // Step 1: Fetch invitation details
+      const invitation = await tx.invite.findUnique({
+        where: { id: token },
+        select: { workspaceId: true, receiverId: true, receiverEmail: true },
+      });
+
+      if (!invitation) throw new NotFoundException('Invitation not found!');
+
+      let receiverId = invitation.receiverId;
+
+      // Step 2: If user is not registered, try to find user by email. there is a chance that user has registered after registering
+      if (!receiverId) {
+        const user = await tx.user.findFirst({
+          where: { email: invitation.receiverEmail },
+          select: { id: true },
+        });
+
+        this.logger.debug('User: ', JSON.stringify(user, null, 2));
+
+        if (!user)
+          throw new NotFoundException('User not found! Please sign up!');
+
+        receiverId = user.id;
+
+        // Step 3: Update all pending invites for this email
+        await tx.invite.updateMany({
+          where: { receiverEmail: invitation.receiverEmail },
+          data: { receiverId: receiverId },
+        });
+      }
+
+      // Step 4: Ensure the user is not already a member
+      const existingMember = await tx.member.findFirst({
+        where: { workspaceId: invitation.workspaceId, userId: receiverId },
+      });
+
+      if (existingMember) {
+        throw new ConflictException(
+          'User is already a member of this workspace',
+        );
+      }
+
+      // Step 5: Mark invitation as accepted
+      await tx.invite.update({
+        where: { id: token },
+        data: { invitationStatus: 'ACCEPTED' },
+      });
+
+      // Step 6: Add the user as a workspace member
+      await tx.member.create({
+        data: {
+          workspaceId: invitation.workspaceId,
+          userId: receiverId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Invite has successfully been accepted',
+      };
+    });
   }
 }

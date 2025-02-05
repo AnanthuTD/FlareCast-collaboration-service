@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   OnModuleInit,
@@ -13,12 +14,12 @@ import { ValidationService } from 'src/common/validations/validations.service';
 export enum NOTIFICATION_EVENT_TYPE {
   FIRST_VIEW = 'firstView',
   COMMENT = 'comment',
-  TRANSCRIPT_SUCCESS = 'transcript-success',
-  TRANSCRIPT_FAILURE = 'transcript-failure',
-  WORKSPACE_REMOVE = 'workspace-remove',
-  WORKSPACE_DELETE = 'workspace-delete',
-  VIDEO_SHARE = 'video-share',
-  WORKSPACE_INVITATION = 'workspace-invitation',
+  TRANSCRIPT_SUCCESS = 'transcript_success',
+  TRANSCRIPT_FAILURE = 'transcript_failure',
+  WORKSPACE_REMOVE = 'workspace_remove',
+  WORKSPACE_DELETE = 'workspace_delete',
+  VIDEO_SHARE = 'video_share',
+  WORKSPACE_INVITATION = 'workspace_invitation',
 }
 
 export interface WorkspaceInvitationNotificationEvent {
@@ -111,6 +112,14 @@ export class WorkspaceService implements OnModuleInit {
           },
         });
 
+        await tx.member.create({
+          data: {
+            workspaceId: workSpace.id,
+            userId: createWorkspaceDto.userId,
+            role: 'ADMIN',
+          },
+        });
+
         if (members.length === 0) return workSpace;
 
         // Find existing users by email
@@ -151,22 +160,31 @@ export class WorkspaceService implements OnModuleInit {
           );
         }
 
-        // Bulk insert invitations
-        if (invitationData.length > 0) {
+        if (invitationData.length !== 0) {
+          // Bulk insert invitations
           await tx.invite.createMany({ data: invitationData });
-        }
 
-        // Send Kafka notification if invitations were created
-        if (invitationData.length > 0) {
+          // Fetch inserted data manually since createMany() doesn’t return records
+          const insertedInvites = await tx.invite.findMany({
+            where: {
+              receiverEmail: {
+                in: invitationData.map((inv) => inv.receiverEmail),
+              },
+            },
+            select: { id: true, receiverEmail: true, receiverId: true },
+          });
+
+          // Prepare Kafka notification payload
           const invites: WorkspaceInvitationNotificationEvent['invites'] =
-            invitationData.map((invite) => ({
+            insertedInvites.map((invite) => ({
               receiverEmail: invite.receiverEmail,
-              url: `${process.env.COLLABORATION_HOST_URL ?? ''}/invitation?token=${invite.workspaceId}`,
+              url: `${process.env.FRONTEND_INVITATION_ROUTE ?? ''}?token=${invite.id}`,
               receiverId: invite?.receiverId,
             }));
 
+          // Send Kafka notification
           this.kafkaService.sendMessageToTopic(
-            Topics.WORKSPACE_INVITATION,
+            Topics.NOTIFICATION_EVENT,
             'Invitation',
             {
               workspaceId: workSpace.id,
@@ -199,22 +217,31 @@ export class WorkspaceService implements OnModuleInit {
 
   async findByUser(userId: string) {
     try {
-      const owned = await this.databaseService.workSpace.findMany({
+      this.logger.log(`Fetching workspaces for user: ${userId}`);
+
+      // Fetch workspaces where user is either an owner or a member
+      const workspaces = await this.databaseService.workSpace.findMany({
         where: {
-          userId,
-        },
-      });
-      const member = await this.databaseService.workSpace.findMany({
-        where: {
-          members: {
-            some: { userId },
-          },
+          OR: [
+            { userId }, // Workspaces owned by the user
+            { members: { some: { userId } } },
+          ],
         },
       });
 
-      return { owned, member };
+      // Transform data to include `owned` field
+      const workspaceList = workspaces.map((ws) => ({
+        ...ws,
+        owned: ws.userId === userId, // Mark as owned if user is the creator
+      }));
+
+      return { member: workspaceList, owned: [{}] };
     } catch (error) {
-      throw new Error(`Failed to retrieve workspaces: ${error.message}`);
+      this.logger.error(
+        `Failed to retrieve workspaces for user: ${userId}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(`Failed to retrieve workspaces`);
     }
   }
 

@@ -7,7 +7,7 @@ import {
 import { Kafka, Consumer, Producer } from 'kafkajs';
 
 export enum Topics {
-  WORKSPACE_INVITATION = 'workspace-invitation',
+  NOTIFICATION_EVENT = 'notification-event',
 }
 
 @Injectable()

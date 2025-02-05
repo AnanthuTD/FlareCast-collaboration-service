@@ -50,12 +50,18 @@ model Member {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   userId      String
   createdAt   DateTime  @default(now())
-  member      Boolean   @default(true)
+  role        Role      @default(MEMBER)
   workspaceId String    @db.ObjectId
   Workspace   WorkSpace @relation(fields: [workspaceId], references: [id])
 
   @@index([userId])
   @@index([workspaceId])
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  MEMBER
 }
 
 model Invite {
@@ -67,7 +73,7 @@ model Invite {
   invitationStatus InviteStatus @default(PENDING)
   workspaceId      String       @db.ObjectId
   Workspace        WorkSpace    @relation(fields: [workspaceId], references: [id])
-  updatedAt        DateTime    @default(now())
+  updatedAt        DateTime     @default(now())
   User             User?        @relation(fields: [receiverId], references: [id])
 
   @@unique([workspaceId, receiverId])
