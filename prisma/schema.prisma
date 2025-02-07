@@ -13,6 +13,7 @@ model User {
   name       String
   workspaces WorkSpace[]
   Invite     Invite[]
+  Member     Member[]
 
   @@index([email])
 }
@@ -48,11 +49,12 @@ model Folder {
 
 model Member {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String
+  userId      String    @db.ObjectId
   createdAt   DateTime  @default(now())
   role        Role      @default(MEMBER)
   workspaceId String    @db.ObjectId
   Workspace   WorkSpace @relation(fields: [workspaceId], references: [id])
+  User        User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([workspaceId])

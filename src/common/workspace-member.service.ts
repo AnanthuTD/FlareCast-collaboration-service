@@ -30,9 +30,19 @@ export class WorkspaceMemberService {
     userId: string;
   }) {
     const workSpace = await this.databaseService.workSpace.findFirst({
-      where: { id: workspaceId, userId },
+      where: { id: workspaceId, members: { some: { userId, role: 'ADMIN' } } },
     });
 
     return workSpace;
   }
+
+  async isAdminOfWorkspace(
+    workspaceId: string,
+    userId: string,
+  ): Promise<boolean> {
+    return !!(await this.databaseService.workSpace.findFirst({
+      where: { id: workspaceId, members: { some: { userId, role: 'ADMIN' } } },
+    }));
+  }
+  
 }

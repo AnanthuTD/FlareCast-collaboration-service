@@ -1,3 +1,3 @@
 export class CreateInvitationDto {
-  invites: string[];
+  emails: string[];
 }

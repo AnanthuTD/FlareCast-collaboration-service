@@ -86,6 +86,7 @@ export class InvitationService {
               { receiverId: { in: registeredUsersToInvite.map((u) => u.id) } },
               { receiverEmail: { in: unregisteredEmails } },
             ],
+            invitationStatus: 'PENDING',
           },
           select: { receiverId: true, receiverEmail: true },
         });
@@ -146,6 +147,7 @@ export class InvitationService {
                 receiverEmail: invite.receiverEmail,
                 url: `${process.env.FRONTEND_INVITATION_ROUTE ?? ''}?token=${invite.id}`,
                 receiverId: invite.receiverId,
+                invitationId: invite.id,
               })),
               eventType: NOTIFICATION_EVENT_TYPE.WORKSPACE_INVITATION,
               timestamp: Date.now(),
@@ -153,7 +155,11 @@ export class InvitationService {
           );
         }
 
-        return { success: true, invitedCount: invitesToCreate.length };
+        return {
+          success: true,
+          invitedCount: invitesToCreate.length,
+          message: 'Invitation send successfully',
+        };
       });
     } catch (error) {
       this.logger.error(
@@ -226,10 +232,47 @@ export class InvitationService {
         },
       });
 
+      this.kafkaService.sendMessageToTopic(
+        Topics.INVITATION_STATUS_UPDATE,
+        'Invitation',
+        {
+          invitationId: token,
+          invitationStatus: 'ACCEPTED',
+        },
+      );
+
       return {
         success: true,
         message: 'Invite has successfully been accepted',
+        id: token,
+        invitationStatus: 'ACCEPTED',
       };
     });
+  }
+
+  async decline(token: string) {
+    if (!token) throw new BadRequestException('Token is required');
+    const rejectedInvitation = await this.databaseService.invite.update({
+      where: { id: token },
+      data: { invitationStatus: 'REJECTED' },
+      select: { invitationStatus: true, id: true },
+    });
+
+    if (!rejectedInvitation)
+      throw new BadRequestException('Invitation not found');
+
+    this.kafkaService.sendMessageToTopic(
+      Topics.INVITATION_STATUS_UPDATE,
+      'Invitation',
+      {
+        invitationId: rejectedInvitation.id,
+        invitationStatus: rejectedInvitation.invitationStatus,
+      },
+    );
+
+    return {
+      ...rejectedInvitation,
+      message: 'Invite has been successfully rejected',
+    };
   }
 }

@@ -12,6 +12,11 @@ export class InvitationController {
     return this.invitationService.accept(token);
   }
 
+  @Post('reject')
+  rejectInvitation(@Body('token') token: string) {
+    return this.invitationService.decline(token);
+  }
+
   @Post(':workspaceId')
   inviteMembers(
     @Param('workspaceId') workspaceId: string,
@@ -21,7 +26,7 @@ export class InvitationController {
     return this.invitationService.create(
       workspaceId,
       user.id,
-      inviteMembersDto.invites,
+      inviteMembersDto.emails,
     );
   }
 }

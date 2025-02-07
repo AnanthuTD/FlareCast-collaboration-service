@@ -11,6 +11,7 @@ import { WorkspaceService } from './workspace.service';
 import { User, UserType } from 'src/common/decorators/user.decorator';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { Member } from '@prisma/client';
 
 @Controller('workspace')
 export class WorkspaceController {
@@ -48,5 +49,34 @@ export class WorkspaceController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.workspaceService.remove(id);
+  }
+
+  @Get(':workspaceId/members')
+  getWorkspaceMembers(@Param('workspaceId') workspaceId: string) {
+    return this.workspaceService.getWorkspaceMembers(workspaceId);
+  }
+
+  @Patch(':workspaceId/member/:memberId')
+  updateRole(
+    @User() user: UserType,
+    @Param('workspaceId') workspaceId: string,
+    @Param('memberId') memberId: string,
+    @Body('role') role: Member['role'],
+  ) {
+    return this.workspaceService.updateRole(
+      user.id,
+      workspaceId,
+      role,
+      memberId,
+    );
+  }
+
+  @Delete(':workspaceId/member/:memberId')
+  removeMember(
+    @User() user: UserType,
+    @Param('workspaceId') workspaceId: string,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.workspaceService.removeMember(workspaceId, user.id, memberId);
   }
 }

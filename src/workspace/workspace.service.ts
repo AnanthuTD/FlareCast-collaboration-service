@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -10,6 +11,7 @@ import { DatabaseService } from 'src/database/database.service';
 import { KafkaService, Topics } from 'src/kafka/kafka.service';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { ValidationService } from 'src/common/validations/validations.service';
+import { Member } from '@prisma/client';
 
 export enum NOTIFICATION_EVENT_TYPE {
   FIRST_VIEW = 'firstView',
@@ -180,6 +182,7 @@ export class WorkspaceService implements OnModuleInit {
               receiverEmail: invite.receiverEmail,
               url: `${process.env.FRONTEND_INVITATION_ROUTE ?? ''}?token=${invite.id}`,
               receiverId: invite?.receiverId,
+              invitationId: invite.id,
             }));
 
           // Send Kafka notification
@@ -301,5 +304,127 @@ export class WorkspaceService implements OnModuleInit {
     } catch (error) {
       throw new Error(`Failed to delete workspace: ${error.message}`);
     }
+  }
+
+  async getWorkspaceMembers(workspaceId: string) {
+    try {
+      const workspace = await this.databaseService.workSpace.findUnique({
+        where: { id: workspaceId },
+        include: {
+          members: {
+            include: {
+              User: {
+                select: { name: true },
+              },
+            },
+          },
+        },
+      });
+      if (!workspace) {
+        throw new NotFoundException(
+          `Workspace with ID ${workspaceId} not found`,
+        );
+      }
+      return workspace.members;
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Failed to retrieve workspace members: ${error.message}`,
+      );
+    }
+  }
+
+  async updateRole(
+    userId: string,
+    workspaceId: string,
+    role: Member['role'],
+    memberId: string,
+  ) {
+    // Validate if the user is an admin
+    const userDetails = await this.databaseService.member.findFirst({
+      where: { workspaceId, userId, role: 'ADMIN' },
+    });
+
+    if (!userDetails) {
+      throw new ForbiddenException('Only admins can update roles');
+    }
+
+    // Fetch the member directly with a workspace check
+    const member = await this.databaseService.member.findFirst({
+      where: { id: memberId, workspaceId },
+    });
+
+    if (!member) {
+      throw new NotFoundException(
+        `Member with ID ${memberId} not found in this workspace`,
+      );
+    }
+
+    // Prevent self-role change
+    if (userDetails.id === member.id) {
+      throw new ForbiddenException('Admins cannot change their own role');
+    }
+
+    if (member.role === 'ADMIN') {
+      // Only the owner can demote an ADMIN
+      const isOwner = await this.databaseService.workSpace.findFirst({
+        where: { id: workspaceId, userId },
+      });
+
+      if (!isOwner) {
+        throw new ForbiddenException(
+          'Only the workspace owner can update an admin’s role',
+        );
+      }
+    }
+
+    await this.databaseService.member.update({
+      where: { id: memberId },
+      data: { role },
+    });
+
+    return { message: 'Member role updated successfully' };
+  }
+
+  async removeMember(workspaceId: string, userId: string, memberId: string) {
+    // Check if user has admin privileges
+    const userDetails = await this.databaseService.member.findFirst({
+      where: { workspaceId, userId, role: 'ADMIN' },
+    });
+
+    if (!userDetails) {
+      throw new ForbiddenException('Only admins can remove members');
+    }
+
+    // Fetch member ensuring it belongs to the workspace
+    const member = await this.databaseService.member.findFirst({
+      where: { id: memberId, workspaceId },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Member not found in this workspace');
+    }
+
+    this.logger.debug('member Information: ', JSON.stringify(member));
+
+    // Prevent removing ADMINs unless the owner is doing it
+    if (member.role === 'ADMIN') {
+      const isOwner = await this.databaseService.workSpace.findFirst({
+        where: { id: workspaceId, userId },
+      });
+
+      if (!isOwner) {
+        throw new ForbiddenException('Only the owner can remove an admin');
+      }
+
+      if (userDetails.id === member.id) {
+        throw new ForbiddenException('Cannot remove owner of the workspace!');
+      }
+    }
+
+    await this.databaseService.member.delete({
+      where: { id: memberId },
+    });
+
+    return { message: 'Successfully removed member from workspace' };
   }
 }

@@ -8,6 +8,7 @@ import { Kafka, Consumer, Producer } from 'kafkajs';
 
 export enum Topics {
   NOTIFICATION_EVENT = 'notification-event',
+  INVITATION_STATUS_UPDATE = 'collaboration.invitation.update',
 }
 
 @Injectable()
@@ -36,6 +37,13 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    await this.kafka.admin().createTopics({
+      topics: [
+        { topic: Topics.INVITATION_STATUS_UPDATE, numPartitions: 1 },
+        { topic: Topics.NOTIFICATION_EVENT, numPartitions: 1 },
+      ],
+    });
+
     await this.consumer.connect();
     await this.producer.connect();
     this.logger.log('Kafka consumer connected');
