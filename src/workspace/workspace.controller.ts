@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import { User, UserType } from 'src/common/decorators/user.decorator';
@@ -78,5 +79,34 @@ export class WorkspaceController {
     @Param('memberId') memberId: string,
   ) {
     return this.workspaceService.removeMember(workspaceId, user.id, memberId);
+  }
+
+  // requested only by the video service
+  @Get(':userId/selected')
+  getSelectedWorkspace(
+    @Param('userId') userId: string,
+    @Query('workspaceId') workspaceId: string,
+    @Query('folderId') folderId: string,
+  ) {
+    return this.workspaceService.getSelectedWorkspace(
+      userId,
+      workspaceId,
+      folderId,
+    );
+  }
+
+  @Get(':workspaceId/search')
+  async searchMembers(
+    @Param('workspaceId') workspaceId: string,
+    @Query('q') query: string = '',
+    @Query('spaceId') spaceId: string = '',
+    @User() user: UserType,
+  ) {
+    return this.workspaceService.searchMembers(
+      workspaceId,
+      spaceId,
+      query,
+      user.id,
+    );
   }
 }

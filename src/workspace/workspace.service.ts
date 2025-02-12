@@ -57,22 +57,37 @@ export class WorkspaceService implements OnModuleInit {
             const { userId, firstName, email } = message.value;
             this.logger.log(`User created: ${userId}`);
 
-            await this.databaseService.$transaction([
-              this.databaseService.user.upsert({
+            await this.databaseService.$transaction(async (tx) => {
+              tx.user.upsert({
                 where: { id: userId },
                 create: { email, name: firstName, id: userId },
                 update: { name: firstName },
-              }),
+              });
 
               // create default workspace
-              this.databaseService.workSpace.create({
+              const workspace = await tx.workSpace.create({
                 data: {
                   userId,
                   name: `${firstName}'s Workspace`,
                   type: 'PERSONAL',
                 },
-              }),
-            ]);
+              });
+
+              await tx.space.create({
+                data: {
+                  workspaceId: workspace.id,
+                  name: workspace.name,
+                  type: 'DEFAULT',
+                },
+              });
+
+              await tx.user.update({
+                where: { id: userId },
+                data: {
+                  selectedWorkspace: workspace.id,
+                },
+              });
+            });
           }
         },
       );
@@ -426,5 +441,151 @@ export class WorkspaceService implements OnModuleInit {
     });
 
     return { message: 'Successfully removed member from workspace' };
+  }
+
+  async getSelectedWorkspace(
+    userId: string,
+    workspaceId?: string,
+    folderId?: string,
+  ) {
+    if (workspaceId) {
+      // Find the workspace with the given ID where the user is a member
+      const workspace = await this.databaseService.workSpace.findFirst({
+        where: {
+          id: workspaceId,
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      // If the workspace exists, check for the folder
+      if (workspace) {
+        const folder = folderId
+          ? await this.databaseService.folder.findUnique({
+              where: { id: folderId, workspaceId },
+              select: { id: true },
+            })
+          : null;
+
+        return {
+          selectedWorkspace: workspace.id,
+          selectedFolder: folder ? folder.id : null,
+          message: `Workspace ${workspace.id} is selected. ${
+            folder ? `Folder ${folder.id} is selected.` : 'No folder selected.'
+          }`,
+        };
+      }
+    }
+
+    // Find the user's selected workspace
+    const user = await this.databaseService.user.findUnique({
+      where: { id: userId },
+      select: { selectedWorkspace: true },
+    });
+
+    // If user doesn't exist, throw an error
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    // If the user has a selected workspace, return it
+    if (user.selectedWorkspace) {
+      return {
+        selectedWorkspace: user.selectedWorkspace,
+        message: `Workspace ${user.selectedWorkspace} is selected`,
+      };
+    }
+
+    // If no selected workspace, find the first one owned by the user
+    const defaultWorkspace = await this.databaseService.workSpace.findFirst({
+      where: { userId },
+      select: { id: true },
+    });
+
+    return {
+      selectedWorkspace: defaultWorkspace?.id || null,
+      message: defaultWorkspace
+        ? `No selected workspace found. Default workspace ${defaultWorkspace.id} assigned.`
+        : 'No workspace found for this user.',
+    };
+  }
+
+  async searchMembers(
+    workspaceId: string,
+    spaceId: string,
+    query: string,
+    userId: string,
+  ) {
+    if (!query.trim()) {
+      return [];
+    }
+
+    // Use MongoDB Atlas Full-Text Search via `aggregateRaw`
+    const result = await this.databaseService.user.aggregateRaw({
+      pipeline: [
+        {
+          $search: {
+            index: 'name', // Ensure this matches your search index name
+            autocomplete: {
+              query: query,
+              path: 'name',
+              fuzzy: { maxEdits: 1 }, // Allows minor typos
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'Member',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'membership',
+          },
+        },
+        {
+          $match: {
+            'membership.workspaceId': { $oid: workspaceId },
+            'membership.userId': { $ne: { $oid: userId } },
+          },
+        },
+        ...(spaceId
+          ? [
+              {
+                $lookup: {
+                  from: 'Member',
+                  localField: '_id',
+                  foreignField: 'userId',
+                  as: 'spaceMembership',
+                },
+              },
+              {
+                $match: {
+                  'spaceMembership.spaceId': { $ne: { $oid: spaceId } }, // Exclude users already in the space
+                },
+              },
+            ]
+          : []),
+        {
+          $project: {
+            id: { $toString: '$_id' },
+            name: 1,
+            email: 1,
+            role: { $arrayElemAt: ['$membership.role', 0] },
+            createdAt: { $arrayElemAt: ['$membership.createdAt', 0] },
+          },
+        },
+        {
+          $limit: 10, // Prevents large query loads
+        },
+      ],
+    });
+
+    return {
+      members: result,
+      message: `Found ${result.length} members matching "${query}", excluding those already in space "${spaceId}".`,
+    };
   }
 }

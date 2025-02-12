@@ -14,6 +14,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { LokiOptions } from 'pino-loki';
 import { FolderModule } from './folder/folder.module';
 import { InvitationModule } from './invitation/invitation.module';
+import { SpaceModule } from './space/space.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { InvitationModule } from './invitation/invitation.module';
     }),
     FolderModule,
     InvitationModule,
+    SpaceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -74,7 +76,10 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(JwtMiddleware)
-      .exclude({ path: 'invitation/accept', method: RequestMethod.POST })
+      .exclude(
+        { path: 'invitation/accept', method: RequestMethod.POST },
+        { path: 'workspace/selected', method: RequestMethod.POST },
+      )
       .forRoutes('*');
   }
 }
