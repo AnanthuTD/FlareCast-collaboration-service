@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Member } from '@prisma/client';
 import { WorkspaceMemberService } from 'src/common/workspace-member.service';
@@ -23,16 +24,62 @@ export class FolderService {
    * Validates if a user has a required role within a space/workspace.
    */
   private async checkFolderPermission({
-    workspaceId,
     userId,
-    spaceId,
     requiredRoles,
+    folderId,
   }: {
-    workspaceId: string;
     userId: string;
-    spaceId?: string;
     requiredRoles: Member['role'][];
+    folderId: string;
   }) {
+    const folder = await this.databaseService.folder.findUnique({
+      where: { id: folderId },
+      select: { id: true, spaceId: true, workspaceId: true },
+    });
+
+    if (!folder) {
+      throw new NotFoundException('Folder not found.');
+    }
+
+    // if the folder is inside a space then check if the user has permission.
+    // if not space then it is a my library, so user has full rights.
+    if (folder.spaceId) {
+      const userRole = await this.workspaceMemberService.getUserRole({
+        workspaceId: folder.workspaceId,
+        userId,
+        spaceId: folder.spaceId,
+      });
+
+      if (!userRole) {
+        throw new NotFoundException(
+          'User is not a member of the workspace or space.',
+        );
+      }
+
+      if (!requiredRoles.includes(userRole)) {
+        throw new ForbiddenException(
+          `You do not have permission to perform this action.`,
+        );
+      }
+    }
+
+    return folder;
+  }
+  private async checkWorkspacePermission({
+    userId,
+    requiredRoles,
+    workspaceId,
+    spaceId,
+  }: {
+    userId: string;
+    requiredRoles: Member['role'][];
+    workspaceId?: string;
+    spaceId?: string;
+  }) {
+    if (!workspaceId || !spaceId) {
+      throw new BadRequestException('Required workspaceId or spaceId');
+    }
+
     const userRole = await this.workspaceMemberService.getUserRole({
       workspaceId,
       userId,
@@ -55,11 +102,16 @@ export class FolderService {
   /**
    * Ensures the user is a member of either the workspace or space.
    */
-  private async validateMembership(
-    workspaceId: string,
-    userId: string,
-    spaceId?: string,
-  ) {
+  private async validateMembership({
+    workspaceId,
+    userId,
+    spaceId,
+  }: {
+    workspaceId?: string;
+    userId: string;
+    spaceId?: string;
+  }) {
+    console.log(workspaceId, userId);
     const isMember = await this.workspaceMemberService.isUserMemberOfSpace({
       workspaceId,
       userId,
@@ -76,15 +128,20 @@ export class FolderService {
   /**
    * Fetch folders based on parent folder and space/workspace membership.
    */
-  async findFolders(
-    workspaceId: string,
-    userId: string,
-    folderId?: string,
-    spaceId?: string,
-  ) {
+  async findFolders({
+    workspaceId,
+    userId,
+    folderId,
+    spaceId,
+  }: {
+    workspaceId: string;
+    userId: string;
+    folderId?: string;
+    spaceId?: string;
+  }) {
     console.log(workspaceId, folderId, userId, spaceId);
 
-    await this.validateMembership(workspaceId, userId, spaceId);
+    await this.validateMembership({ workspaceId, userId, spaceId });
 
     return this.databaseService.folder.findMany({
       where: {
@@ -100,18 +157,37 @@ export class FolderService {
   /**
    * Creates a new folder.
    */
-  async createFolder(
-    workspaceId: string,
-    userId: string,
-    folderId?: string,
-    spaceId?: string,
-  ) {
-    await this.checkFolderPermission({
-      workspaceId,
-      userId,
-      spaceId,
-      requiredRoles: ['ADMIN', 'EDITOR'],
-    });
+  async createFolder({
+    workspaceId,
+    userId,
+    folderId,
+    spaceId,
+  }: {
+    workspaceId: string;
+    userId: string;
+    folderId?: string;
+    spaceId?: string;
+  }) {
+    const requiredRoles: Member['role'][] = ['ADMIN', 'EDITOR'];
+
+    // Check if the user has access to the folder
+    if (folderId) {
+      await this.checkFolderPermission({
+        userId,
+        requiredRoles,
+        folderId,
+      });
+    } else if (spaceId) {
+      // check if the user has permission to the space
+      await this.checkWorkspacePermission({
+        userId,
+        requiredRoles,
+        spaceId,
+        workspaceId,
+      });
+    }
+
+    // user has sufficient permissions
 
     const folder = await this.databaseService.folder.create({
       data: {
@@ -129,17 +205,17 @@ export class FolderService {
   /**
    * Deletes a folder.
    */
-  async deleteFolder(
-    workspaceId: string,
-    userId: string,
-    folderId: string,
-    spaceId?: string,
-  ) {
+  async deleteFolder({
+    userId,
+    folderId,
+  }: {
+    userId: string;
+    folderId: string;
+  }) {
     await this.checkFolderPermission({
-      workspaceId,
       userId,
-      spaceId,
       requiredRoles: ['ADMIN'],
+      folderId,
     });
 
     await this.databaseService.folder.deleteMany({
@@ -152,17 +228,19 @@ export class FolderService {
   /**
    * Renames a folder.
    */
-  async renameFolder(
-    workspaceId: string,
-    userId: string,
-    folderId: string,
-    newName: string,
-  ) {
+  async renameFolder({
+    userId,
+    folderId,
+    newName,
+  }: {
+    userId: string;
+    folderId: string;
+    newName: string;
+  }) {
     await this.checkFolderPermission({
-      workspaceId,
       userId,
-      spaceId: undefined,
       requiredRoles: ['ADMIN', 'EDITOR'],
+      folderId,
     });
 
     this.logger.log(`Renaming folder to: ${newName}`);
@@ -181,7 +259,7 @@ export class FolderService {
     userId: string,
     folderId: string,
   ) {
-    await this.validateMembership(workspaceId, userId);
+    await this.validateMembership({ workspaceId, userId });
 
     const parentFolders = [];
     let currentFolder = await this.databaseService.folder.findUnique({
@@ -211,5 +289,64 @@ export class FolderService {
     }
 
     return { parentFolders };
+  }
+
+  async moveFolder(
+    userId: string,
+    folderId: string,
+    destination: {
+      id: string;
+      type: 'folder' | 'space' | 'workspace';
+    },
+  ) {
+    this.logger.debug(`moveFolder: ${folderId} to ${destination.id}`);
+
+    const sourceFolder = await this.checkFolderPermission({
+      userId,
+      requiredRoles: ['ADMIN'],
+      folderId,
+    });
+
+    if (!sourceFolder) {
+      throw new NotFoundException('Folder not found.');
+    }
+
+    // Prevent moving folders across workspaces (optional)
+    // TODO: Only for paid customers
+    if (
+      destination.type === 'workspace' &&
+      destination.id !== sourceFolder.workspaceId
+    ) {
+      throw new BadRequestException(
+        'Moving folders across workspaces is not supported.',
+      );
+    }
+
+    const updateData: Record<string, any> = {
+      parentFolderId: null,
+      spaceId: null,
+    };
+
+    if (destination.type === 'folder') {
+      await this.checkFolderPermission({
+        requiredRoles: ['ADMIN'],
+        userId,
+        folderId: destination.id,
+      });
+      updateData.parentFolderId = destination.id;
+    } else if (destination.type === 'space') {
+      await this.checkWorkspacePermission({
+        requiredRoles: ['ADMIN'],
+        userId,
+        spaceId: destination.id,
+        workspaceId: sourceFolder.workspaceId,
+      });
+      updateData.spaceId = destination.id;
+    }
+
+    return await this.databaseService.folder.update({
+      where: { id: folderId },
+      data: updateData,
+    });
   }
 }
