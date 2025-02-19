@@ -82,6 +82,7 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'invitation/accept', method: RequestMethod.POST },
         { path: '/permissions/share-file', method: RequestMethod.POST },
+        { path: '/', method: RequestMethod.GET },
         { path: 'workspace/selected', method: RequestMethod.POST },
         { path: 'workspace/:userId/selected', method: RequestMethod.GET },
       )
