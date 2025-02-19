@@ -47,10 +47,10 @@ jobs:
 
       - name: Update Image Tag in Infra Repo Manifests
         env:
-          INFRA_REPO: https://github.com/ananthutd2003/infra.git
+          INFRA_REPO: github.com/AnanthuTD/FlareCast-infra.git
         run: |
           # Clone the infra repo using the dedicated token
-          git clone https://${{ secrets.INFRA_DEPLOY_TOKEN }}@github.com/ananthutd2003/infra.git
+          git clone https://${{ secrets.INFRA_DEPLOY_TOKEN }}@${{ env.INFRA_REPO }} infra
           cd infra
           # Set the remote URL to include the token for future push operations
           git remote set-url origin https://${{ secrets.INFRA_DEPLOY_TOKEN }}@github.com/AnanthuTD/FlareCast-infra
