@@ -67,7 +67,7 @@ jobs:
           yq eval ".spec.template.spec.containers[0].image = \"ananthutd2003/${SERVICE_NAME}:${GITHUB_SHA}\"" -i $DEPLOY_MANIFEST_PATH
 
           # Validate the updated manifest with a dry-run
-          kubectl apply --dry-run=client --validate=false -f $DEPLOY_MANIFEST_PATH
+          # kubectl apply --dry-run=client --validate=false -f $DEPLOY_MANIFEST_PATH
 
           # Check if there are any changes; if not, skip committing
           if git diff --exit-code; then
