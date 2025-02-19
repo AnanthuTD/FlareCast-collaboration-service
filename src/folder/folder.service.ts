@@ -23,7 +23,7 @@ export class FolderService {
   /**
    * Validates if a user has a required role within a space/workspace.
    */
-  private async checkFolderPermission({
+  async checkFolderPermission({
     userId,
     requiredRoles,
     folderId,
@@ -56,7 +56,7 @@ export class FolderService {
         );
       }
 
-      if (!requiredRoles.includes(userRole)) {
+      if (!requiredRoles.includes(userRole.role)) {
         throw new ForbiddenException(
           `You do not have permission to perform this action.`,
         );
@@ -65,7 +65,8 @@ export class FolderService {
 
     return folder;
   }
-  private async checkWorkspacePermission({
+
+  async checkWorkspacePermission({
     userId,
     requiredRoles,
     workspaceId,
@@ -92,17 +93,19 @@ export class FolderService {
       );
     }
 
-    if (!requiredRoles.includes(userRole)) {
+    if (!requiredRoles.includes(userRole.role)) {
       throw new ForbiddenException(
         `You do not have permission to perform this action.`,
       );
     }
+
+    return userRole;
   }
 
   /**
    * Ensures the user is a member of either the workspace or space.
    */
-  private async validateMembership({
+  async validateMembership({
     workspaceId,
     userId,
     spaceId,

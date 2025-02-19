@@ -2,6 +2,8 @@ import { IsString, IsEnum, IsArray, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SpaceType } from '@prisma/client';
 
+console.log(SpaceType);
+
 export class CreateSpaceDto {
   @IsString()
   @IsNotEmpty({ message: 'Name should not be empty' })

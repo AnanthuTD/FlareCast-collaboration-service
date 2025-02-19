@@ -145,7 +145,7 @@ export class SpaceService {
     }
 
     const members = await this.databaseService.member.findMany({
-      where: { spaceId },
+      where: { spaceIds: { has: spaceId } },
       include: {
         User: {
           select: {

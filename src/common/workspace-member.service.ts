@@ -95,7 +95,7 @@ export class WorkspaceMemberService {
     workspaceId: string;
     userId: string;
     spaceId?: string;
-  }): Promise<Member['role'] | null> {
+  }): Promise<{ role: Member['role']; workspaceId: string } | null> {
     const query: Prisma.MemberWhereInput = {
       userId,
     };
@@ -112,9 +112,9 @@ export class WorkspaceMemberService {
 
     const member = await this.databaseService.member.findFirst({
       where: query,
-      select: { role: true },
+      select: { role: true, workspaceId: true },
     });
 
-    return member?.role || null;
+    return member || null;
   }
 }

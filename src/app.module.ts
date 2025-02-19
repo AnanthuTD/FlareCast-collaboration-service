@@ -15,6 +15,8 @@ import { LokiOptions } from 'pino-loki';
 import { FolderModule } from './folder/folder.module';
 import { InvitationModule } from './invitation/invitation.module';
 import { SpaceModule } from './space/space.module';
+import { FolderService } from './folder/folder.service';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -68,9 +70,10 @@ import { SpaceModule } from './space/space.module';
     FolderModule,
     InvitationModule,
     SpaceModule,
+    CommonModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, FolderService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
@@ -78,7 +81,9 @@ export class AppModule implements NestModule {
       .apply(JwtMiddleware)
       .exclude(
         { path: 'invitation/accept', method: RequestMethod.POST },
+        { path: '/permissions/share-file', method: RequestMethod.POST },
         { path: 'workspace/selected', method: RequestMethod.POST },
+        { path: 'workspace/:userId/selected', method: RequestMethod.GET },
       )
       .forRoutes('*');
   }

@@ -9,5 +9,6 @@ import { CommonModule } from 'src/common/common.module';
   controllers: [FolderController],
   providers: [FolderService],
   imports: [DatabaseModule, KafkaModule, CommonModule],
+  exports: [FolderService],
 })
 export class FolderModule {}
