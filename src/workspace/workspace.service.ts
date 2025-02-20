@@ -58,7 +58,7 @@ export class WorkspaceService implements OnModuleInit {
             this.logger.log(`User created: ${userId}`);
 
             await this.databaseService.$transaction(async (tx) => {
-              tx.user.upsert({
+              await tx.user.upsert({
                 where: { id: userId },
                 create: { email, name: firstName, id: userId },
                 update: { name: firstName },
