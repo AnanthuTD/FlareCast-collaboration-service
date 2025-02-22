@@ -15,6 +15,7 @@ import { ValidationService } from 'src/common/validations/validations.service';
 import { Member } from '@prisma/client';
 import { Observable, Subject } from 'rxjs';
 import { WorkspacesGateway } from './workspaces.gateway';
+import { SOCKET_EVENTS } from 'src/common/events';
 
 export enum NOTIFICATION_EVENT_TYPE {
   FIRST_VIEW = 'firstView',
@@ -93,9 +94,14 @@ export class WorkspaceService implements OnModuleInit {
                 },
               });
 
-              this.workspacesGateway.emitToUser(userId, 'workspace:created', {
-                workspaces: [workspace],
-              });
+              // send message to the user when workspace is created.
+              this.workspacesGateway.emitToUser(
+                userId,
+                SOCKET_EVENTS.WORKSPACE_CREATED,
+                {
+                  workspaces: [workspace],
+                },
+              );
             });
           }
         },

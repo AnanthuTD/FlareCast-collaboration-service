@@ -5,4 +5,5 @@ export const SOCKET_EVENTS = {
   FOLDER_CREATE: 'folder:create',
   VIDEO_DELETED: 'video:deleted',
   VIDEO_DELETE: 'video:delete',
+  WORKSPACE_UPDATES: 'workspace:updates',
 };

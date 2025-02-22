@@ -21,10 +21,10 @@ async function bootstrap() {
     maxAge: 31536000, // 1 year
   });
   app.useLogger(app.get(Logger));
-  const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis();
+  // const redisIoAdapter = new RedisIoAdapter(app);
+  // await redisIoAdapter.connectToRedis();
 
-  app.useWebSocketAdapter(redisIoAdapter);
+  // app.useWebSocketAdapter(redisIoAdapter);
 
   await app.listen(process.env.PORT);
 
