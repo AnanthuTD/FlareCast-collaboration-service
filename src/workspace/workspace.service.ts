@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  MessageEvent,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import { KafkaService, Topics } from 'src/kafka/kafka.service';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { ValidationService } from 'src/common/validations/validations.service';
 import { Member } from '@prisma/client';
+import { Observable, Subject } from 'rxjs';
+import { WorkspacesGateway } from './workspaces.gateway';
 
 export enum NOTIFICATION_EVENT_TYPE {
   FIRST_VIEW = 'firstView',
@@ -40,11 +43,13 @@ export interface WorkspaceInvitationNotificationEvent {
 @Injectable()
 export class WorkspaceService implements OnModuleInit {
   private readonly logger = new Logger(WorkspaceService.name);
+  private userConnections = new Map<string, Subject<MessageEvent>>();
 
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly kafkaService: KafkaService,
     private readonly validationService: ValidationService,
+    private readonly workspacesGateway: WorkspacesGateway,
   ) {}
 
   /* listen to user-created topic and create a new personal workspace for every new user */
@@ -86,6 +91,10 @@ export class WorkspaceService implements OnModuleInit {
                 data: {
                   selectedWorkspace: workspace.id,
                 },
+              });
+
+              this.workspacesGateway.emitToUser(userId, 'workspace:created', {
+                workspaces: [workspace],
               });
             });
           }
@@ -587,5 +596,34 @@ export class WorkspaceService implements OnModuleInit {
       members: result,
       message: `Found ${result.length} members matching "${query}", excluding those already in space "${spaceId}".`,
     };
+  }
+
+  getWorkspacesEvent(userId: string): Observable<MessageEvent> {
+    return new Observable((observer) => {
+      this.findByUser(userId)
+        .then((data) => {
+          if (data.member.length > 0) {
+            observer.next({ data }); // ✅ Send data as a MessageEvent
+            observer.complete(); // ✅ Close the stream if no more events
+          } else {
+            // If the user has no workspaces, listen for new ones
+            if (!this.userConnections.has(userId)) {
+              this.userConnections.set(userId, new Subject<MessageEvent>());
+            }
+            this.userConnections.get(userId).asObservable().subscribe(observer);
+          }
+        })
+        .catch((err) => {
+          observer.error(err);
+        });
+    });
+  }
+
+  notifyNewWorkspace(userId: string, workspace: any) {
+    if (this.userConnections.has(userId)) {
+      this.userConnections.get(userId).next({
+        data: { message: 'New workspace created!', workspace },
+      });
+    }
   }
 }

@@ -7,12 +7,15 @@ import {
   Param,
   Delete,
   Query,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import { User, UserType } from 'src/common/decorators/user.decorator';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { Member } from '@prisma/client';
+import { Observable } from 'rxjs';
 
 @Controller('workspace')
 export class WorkspaceController {
@@ -32,6 +35,11 @@ export class WorkspaceController {
   @Get()
   findByUserId(@User() user: UserType) {
     return this.workspaceService.findByUser(user.id);
+  }
+
+  @Sse('stream/:userId')
+  getWorkspaces(@Param('userId') userId: string): Observable<MessageEvent> {
+    return this.workspaceService.getWorkspacesEvent(userId);
   }
 
   @Get(':id')
