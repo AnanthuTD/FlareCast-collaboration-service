@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
 import { RedisIoAdapter } from './adapter/redis-io.adapter';
+import { ValidationPipe } from '@nestjs/common';
 declare const module: any;
 
 async function bootstrap() {
@@ -21,6 +22,7 @@ async function bootstrap() {
     maxAge: 31536000, // 1 year
   });
   app.useLogger(app.get(Logger));
+  app.useGlobalPipes(new ValidationPipe());
   // const redisIoAdapter = new RedisIoAdapter(app);
   // await redisIoAdapter.connectToRedis();
 

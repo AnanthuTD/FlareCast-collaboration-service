@@ -16,6 +16,7 @@ model User {
   memberships          Member[]
   selectedWorkspace    String?     @db.ObjectId
   selectedWorkspaceRel WorkSpace?  @relation("selected-workspace", fields: [selectedWorkspace], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Chats                Chat[]
 }
 
 model WorkSpace {
@@ -121,4 +122,22 @@ enum InviteStatus {
 enum Type {
   PERSONAL
   PUBLIC
+}
+
+model Chat {
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String @db.ObjectId
+  User   User   @relation(fields: [userId], references: [id])
+
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  videoId String @db.ObjectId
+
+  repliedTo  String? @db.ObjectId
+  ParentChat Chat?   @relation("ReplyTo", fields: [repliedTo], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  Chat       Chat[]  @relation("ReplyTo")
+
+  @@index([videoId])
 }

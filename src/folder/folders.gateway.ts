@@ -1,4 +1,8 @@
-import { WebSocketGateway, SubscribeMessage } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  SubscribeMessage,
+  ConnectedSocket,
+} from '@nestjs/websockets';
 import { BaseGateway } from '../common/base.gateway';
 import { SOCKET_EVENTS } from 'src/common/events';
 import { Socket } from 'socket.io';
@@ -36,7 +40,7 @@ export class FoldersGateway extends BaseGateway {
 
   @SubscribeMessage(SOCKET_EVENTS.FOLDER_UPDATES)
   handleFolderUpdates(
-    client: Socket,
+    @ConnectedSocket() socket: Socket,
     data: { folderId: string; spaceId: string; workspaceId: string },
   ) {
     this.logger.log(`Subscribed to folder updates: ${JSON.stringify(data)}`);
@@ -47,7 +51,7 @@ export class FoldersGateway extends BaseGateway {
       spaceId: data.spaceId,
     });
 
-    this.server.socketsJoin(roomId);
+    socket.join(roomId);
   }
 
   emitToFolder(event: string, data: Partial<Folder>) {
