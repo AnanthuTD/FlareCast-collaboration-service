@@ -8,51 +8,58 @@ export class ChatsService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(createChatDto) {
-    console.log('receivedData: ', createChatDto);
-    const { message, userId, videoId, repliedTo } = createChatDto;
+    try {
+      console.log('receivedData: ', createChatDto);
+      const { message, userId, videoId, repliedTo } = createChatDto;
 
-    const chat = await this.databaseService.chat.create({
-      data: {
-        message,
-        userId,
-        videoId,
-        repliedTo: repliedTo ? repliedTo.id : undefined,
-      },
-      include: {
-        User: {
-          select: {
-            id: true,
-            name: true,
-          },
+      const chat = await this.databaseService.chat.create({
+        data: {
+          message,
+          userId,
+          videoId,
+          repliedTo: repliedTo ? repliedTo.id : undefined,
         },
-        ParentChat: {
-          select: {
-            id: true,
-            message: true,
-            createdAt: true,
-            User: {
-              select: {
-                id: true,
-                name: true,
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          ParentChat: {
+            select: {
+              id: true,
+              message: true,
+              createdAt: true,
+              User: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    if (chat) {
-      chat.user = chat.User;
-      chat.User = undefined;
-      chat.repliedTo = chat.ParentChat;
-      chat.ParentChat = undefined;
-      chat.repliedTo.user = chat.repliedTo.User;
-      chat.repliedTo.User = undefined;
+      if (chat) {
+        chat.user = chat.User;
+        chat.User = undefined;
+        if (chat.ParentChat) {
+          chat.repliedTo = chat.ParentChat;
+          chat.ParentChat = undefined;
+          chat.repliedTo.user = chat.repliedTo.User;
+          chat.repliedTo.User = undefined;
+        }
+      }
+
+      console.log('created chat: ', chat);
+
+      return chat;
+    } catch (error) {
+      console.error(error);
+      return;
     }
-
-    console.log('created chat: ', chat);
-
-    return chat;
   }
 
   async findAll({
@@ -187,12 +194,46 @@ export class ChatsService {
   }
 
   async update(id: string, updateChatDto: UpdateChatDto) {
-    return await this.databaseService.chat.update({
+    const chat = await this.databaseService.chat.update({
       where: { id },
       data: {
-        message: updateChatDto.message, 
+        message: updateChatDto.message,
+      },
+      include: {
+        User: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        ParentChat: {
+          select: {
+            id: true,
+            message: true,
+            createdAt: true,
+            User: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
+
+    if (chat) {
+      chat.user = chat.User;
+      chat.User = undefined;
+      if (chat.ParentChat) {
+        chat.repliedTo = chat.ParentChat;
+        chat.ParentChat = undefined;
+        chat.repliedTo.user = chat.repliedTo.User;
+        chat.repliedTo.User = undefined;
+      }
+    }
+
+    return chat;
   }
 
   async remove(id: string) {

@@ -117,7 +117,13 @@ export class ChatsGateway extends BaseGateway {
   @SubscribeMessage('updateChat')
   async update(@MessageBody() updateChatDto: UpdateChatDto) {
     try {
-      return await this.chatsService.update(updateChatDto.id, updateChatDto);
+      const updatedChat = await this.chatsService.update(
+        updateChatDto.id,
+        updateChatDto,
+      );
+      this.server
+        .to(this.getRoomId(updatedChat.videoId))
+        .emit('updatedChat', updatedChat);
     } catch (error) {
       this.logger.error(
         `Error updating chat with id ${updateChatDto.id}`,
@@ -130,7 +136,10 @@ export class ChatsGateway extends BaseGateway {
   @SubscribeMessage('removeChat')
   async remove(@MessageBody() id: string) {
     try {
-      return await this.chatsService.remove(id);
+      const removedChat = await this.chatsService.remove(id);
+      this.server
+        .to(this.getRoomId(removedChat.videoId))
+        .emit('removedChat', removedChat);
     } catch (error) {
       this.logger.error(`Error removing chat with id ${id}`, error);
       return { message: 'Failed to remove chat' };
