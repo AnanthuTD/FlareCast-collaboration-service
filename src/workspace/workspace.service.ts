@@ -79,7 +79,7 @@ export class WorkspaceService implements OnModuleInit {
                 },
               });
 
-              await tx.space.create({
+              const space = await tx.space.create({
                 data: {
                   workspaceId: workspace.id,
                   name: workspace.name,
@@ -91,6 +91,17 @@ export class WorkspaceService implements OnModuleInit {
                 where: { id: userId },
                 data: {
                   selectedWorkspace: workspace.id,
+                },
+              });
+
+              await tx.member.create({
+                data: {
+                  workspaceId: workspace.id,
+                  userId,
+                  role: 'ADMIN',
+                  spaceIds: {
+                    set: [space.id],
+                  },
                 },
               });
 

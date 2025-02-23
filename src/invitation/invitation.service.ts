@@ -224,11 +224,19 @@ export class InvitationService {
         data: { invitationStatus: 'ACCEPTED' },
       });
 
+      const space = await tx.space.findFirst({
+        where: { workspaceId: invitation.workspaceId, type: 'DEFAULT' },
+        select: { id: true },
+      });
+
       // Step 6: Add the user as a workspace member
       await tx.member.create({
         data: {
           workspaceId: invitation.workspaceId,
           userId: receiverId,
+          spaceIds: {
+            set: [space.id],
+          },
         },
       });
 
