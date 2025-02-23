@@ -9,6 +9,8 @@ import { Member } from '@prisma/client';
 import { WorkspaceMemberService } from 'src/common/workspace-member.service';
 import { DatabaseService } from 'src/database/database.service';
 import { KafkaService } from 'src/kafka/kafka.service';
+import { FoldersGateway } from './folders.gateway';
+import { SOCKET_EVENTS } from 'src/common/events';
 
 @Injectable()
 export class FolderService {
@@ -18,6 +20,7 @@ export class FolderService {
     private readonly databaseService: DatabaseService,
     private readonly kafkaService: KafkaService,
     private readonly workspaceMemberService: WorkspaceMemberService,
+    private readonly folderGateway: FoldersGateway,
   ) {}
 
   /**
@@ -43,25 +46,6 @@ export class FolderService {
 
     // if the folder is inside a space then check if the user has permission.
     // if not space then it is a my library, so user has full rights.
-    if (folder.spaceId) {
-      const userRole = await this.workspaceMemberService.getUserRole({
-        workspaceId: folder.workspaceId,
-        userId,
-        spaceId: folder.spaceId,
-      });
-
-      if (!userRole) {
-        throw new NotFoundException(
-          'User is not a member of the workspace or space.',
-        );
-      }
-
-      if (!requiredRoles.includes(userRole.role)) {
-        throw new ForbiddenException(
-          `You do not have permission to perform this action.`,
-        );
-      }
-    }
 
     return folder;
   }
@@ -201,7 +185,8 @@ export class FolderService {
       },
     });
 
-    this.logger.log(folder);
+    this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_UPDATES, folder);
+
     return folder;
   }
 
@@ -215,7 +200,7 @@ export class FolderService {
     userId: string;
     folderId: string;
   }) {
-    await this.checkFolderPermission({
+    const folder = await this.checkFolderPermission({
       userId,
       requiredRoles: ['ADMIN'],
       folderId,
@@ -224,6 +209,8 @@ export class FolderService {
     await this.databaseService.folder.deleteMany({
       where: { parentFolderId: folderId },
     });
+
+    this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_DELETED, folder);
 
     return this.databaseService.folder.delete({ where: { id: folderId } });
   }
@@ -248,10 +235,14 @@ export class FolderService {
 
     this.logger.log(`Renaming folder to: ${newName}`);
 
-    return this.databaseService.folder.update({
+    const folder = await this.databaseService.folder.update({
       where: { id: folderId },
       data: { name: newName },
     });
+
+    this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_RENAMED, folder);
+
+    return folder;
   }
 
   /**
@@ -347,9 +338,12 @@ export class FolderService {
       updateData.spaceId = destination.id;
     }
 
-    return await this.databaseService.folder.update({
+    const folder = await this.databaseService.folder.update({
       where: { id: folderId },
       data: updateData,
     });
+
+    this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_CREATED, folder);
+    this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_DELETED, folder);
   }
 }

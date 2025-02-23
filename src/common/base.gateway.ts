@@ -7,53 +7,44 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { OnModuleInit, UseGuards } from '@nestjs/common';
-import { WsAuthGuard } from './ws-auth.guard';
 import { AuthWsMiddleware } from './ws-auth.middleware';
-// import { createClient } from 'redis';
-// import { createShardedAdapter } from '@socket.io/redis-adapter';
 
 @WebSocketGateway({
-  cors: {
-    cors: true,
-    origin: ['*'],
-  },
+  namespace: 'collaboration', // Matches /collaboration/socket.io/
+  /* cors: {
+    origin: ['http://localhost:3000', 'https://flarecast.ananthutd.live'], // Explicit origins
+    credentials: true, // Allow cookies
+  }, */
 })
-// @UseGuards(WsAuthGuard)
-export class BaseGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class BaseGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
   @WebSocketServer()
   protected server: Server;
 
-  private activeUsers = new Map<string, string>();
-
-  /* async afterInit(@ConnectedSocket() socket: Socket) {
-    console.log('after init');
-
-    socket.use((event, next) => {
-      console.log('after init');
-      console.log(event);
-      next();
-    });
-  } */
+  async afterInit(@ConnectedSocket() socket: Socket) {
+    socket.use(AuthWsMiddleware());
+  }
 
   async handleConnection(socket: Socket) {
     console.log(`Client connected: ${socket.id}`, socket.handshake.auth?.user);
-    const userId = socket.handshake.auth?.user?.id;
+    const userId = socket.data.user.id;
     if (userId) {
-      this.activeUsers.set(socket.id, userId);
+      // Join a room named after the userId
+      socket.join(userId);
     }
   }
 
   async handleDisconnect(socket: Socket) {
-    this.activeUsers.delete(socket.id);
+    const userId = socket.data.user.id;
+    if (userId) {
+      // Leave the room (optional, since Socket.IO cleans up on disconnect)
+      socket.leave(userId);
+    }
   }
 
   emitToUser(userId: string, event: string, data: any) {
-    const socketId = [...this.activeUsers.entries()].find(
-      ([, id]) => id === userId,
-    )?.[0];
-    if (socketId) {
-      this.server.to(socketId).emit(event, data);
-    }
+    // Emit to the room named after the userId
+    this.server.to(userId).emit(event, data);
   }
 }

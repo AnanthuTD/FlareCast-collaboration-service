@@ -1,11 +1,63 @@
 import { WebSocketGateway, SubscribeMessage } from '@nestjs/websockets';
 import { BaseGateway } from '../common/base.gateway';
 import { SOCKET_EVENTS } from 'src/common/events';
+import { Socket } from 'socket.io';
+import { Folder } from '@prisma/client';
+import { Logger } from '@nestjs/common';
 
-@WebSocketGateway()
+@WebSocketGateway({
+  namespace: '/folder',
+  /*  cors: {
+    cors: true,
+    origin: ['*'],
+    credentials: true,
+  }, */
+})
 export class FoldersGateway extends BaseGateway {
-  @SubscribeMessage(SOCKET_EVENTS.FOLDER_CREATED)
-  handleCreateFolder(client: any, data: { userId: string; folder: any }) {
-    this.emitToUser(data.userId, 'folder:created', data.folder);
+  private readonly logger = new Logger(FoldersGateway.name);
+
+  createRoomId({
+    folderId,
+    workspaceId,
+    spaceId,
+  }: {
+    folderId: string;
+    workspaceId: string;
+    spaceId: string;
+  }) {
+    if (folderId) {
+      return `folder-${folderId}`;
+    }
+    if (spaceId) {
+      return `space-${spaceId}`;
+    }
+    return `workspace-${workspaceId}`;
+  }
+
+  @SubscribeMessage(SOCKET_EVENTS.FOLDER_UPDATES)
+  handleFolderUpdates(
+    client: Socket,
+    data: { folderId: string; spaceId: string; workspaceId: string },
+  ) {
+    this.logger.log(`Subscribed to folder updates: ${JSON.stringify(data)}`);
+
+    const roomId = this.createRoomId({
+      folderId: data.folderId,
+      workspaceId: data.workspaceId,
+      spaceId: data.spaceId,
+    });
+
+    this.server.socketsJoin(roomId);
+  }
+
+  emitToFolder(event: string, data: Partial<Folder>) {
+    const roomId = this.createRoomId({
+      folderId: data.id,
+      workspaceId: data.workspaceId,
+      spaceId: data.spaceId,
+    });
+
+    // Emit to the room named after the userId
+    this.server.to(roomId).emit(event, data);
   }
 }

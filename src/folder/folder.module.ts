@@ -9,7 +9,7 @@ import { FoldersGateway } from './folders.gateway';
 @Module({
   controllers: [FolderController],
   providers: [FolderService, FoldersGateway],
-  imports: [DatabaseModule, KafkaModule, CommonModule],
+  imports: [DatabaseModule, KafkaModule, CommonModule], 
   exports: [FolderService],
 })
 export class FolderModule {}

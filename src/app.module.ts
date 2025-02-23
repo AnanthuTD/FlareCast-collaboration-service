@@ -17,6 +17,7 @@ import { InvitationModule } from './invitation/invitation.module';
 import { SpaceModule } from './space/space.module';
 import { FolderService } from './folder/folder.service';
 import { CommonModule } from './common/common.module';
+import { FoldersGateway } from './folder/folders.gateway';
 
 @Module({
   imports: [
@@ -73,7 +74,7 @@ import { CommonModule } from './common/common.module';
     CommonModule,
   ],
   controllers: [AppController],
-  providers: [AppService, FolderService],
+  providers: [AppService, FolderService, FoldersGateway],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
