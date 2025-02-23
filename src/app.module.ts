@@ -18,6 +18,7 @@ import { SpaceModule } from './space/space.module';
 import { FolderService } from './folder/folder.service';
 import { CommonModule } from './common/common.module';
 import { FoldersGateway } from './folder/folders.gateway';
+import { ChatsModule } from './chats/chats.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { FoldersGateway } from './folder/folders.gateway';
     InvitationModule,
     SpaceModule,
     CommonModule,
+    ChatsModule,
   ],
   controllers: [AppController],
   providers: [AppService, FolderService, FoldersGateway],
