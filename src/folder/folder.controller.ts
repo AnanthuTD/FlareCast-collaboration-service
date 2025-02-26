@@ -18,6 +18,23 @@ import { User, UserType } from 'src/common/decorators/user.decorator';
 export class FolderController {
   constructor(private readonly folderService: FolderService) {}
 
+  @Get(':workspaceId/search')
+  async searchFolders(
+    @Query('query') query: string,
+    @User() user: UserType,
+    @Param('workspaceId') workspaceId: string,
+    @Query('limit') limit = '10',
+    @Query('paginationToken') paginationToken?: string,
+  ) {
+    this.folderService.searchFolder({
+      workspaceId,
+      query,
+      userId: user.id,
+      limit,
+      paginationToken,
+    });
+  }
+
   /**
    * Fetch all folders for a workspace.
    */

@@ -346,4 +346,95 @@ export class FolderService {
     this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_CREATED, folder);
     this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_DELETED, folder);
   }
+
+  async searchFolder({
+    query,
+    userId,
+    workspaceId,
+    limit = '10',
+    direction = 'searchAfter',
+    paginationToken,
+  }: {
+    workspaceId: string;
+    query: string;
+    userId: string;
+    limit: string;
+    direction?: 'searchAfter' | 'searchBefore';
+    paginationToken?: string;
+  }) {
+    await this.validateMembership({ workspaceId, userId });
+
+    // Return empty array if no query
+    if (!query || query.trim() === '') return { results: [] };
+
+    // Fetch accessible spaceIds
+    const member = await this.databaseService.member.findUnique({
+      where: {
+        id: userId,
+        workspaceId,
+      },
+      select: {
+        spaceIds: true,
+      },
+    });
+
+    // Convert spaceIds to MongoDB ObjectId format
+    const spaceObjectIds = member.spaceIds.map((spaceId) => ({
+      $oid: spaceId,
+    }));
+
+    // Search folders with Atlas Search
+    const searchStage: any = {
+      $search: {
+        index: 'default',
+        compound: {
+          must: [
+            {
+              in: {
+                path: 'spaceId',
+                value: spaceObjectIds,
+              },
+            },
+            {
+              autocomplete: {
+                query,
+                path: 'name',
+                tokenOrder: 'any',
+                fuzzy: { maxEdits: 1 },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    // Add searchAfter if provided
+    if (paginationToken) {
+      searchStage.$search[direction] = paginationToken;
+    }
+
+    // Execute search with pagination
+    const folders = await this.databaseService.folder
+      .aggregateRaw({
+        pipeline: [
+          searchStage,
+          { $limit: parseInt(limit) },
+          {
+            $project: {
+              name: 1,
+              spaceId: 1,
+              _id: 0,
+              score: { $meta: 'searchScore' },
+              createdAt: { $toString: '$createdAt' },
+            },
+          },
+        ],
+      })
+      .catch((error) => {
+        console.error('Search failed:', error);
+        throw new Error('Folder search failed');
+      });
+
+    return { results: folders };
+  }
 }
