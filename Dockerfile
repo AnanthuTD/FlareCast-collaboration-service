@@ -4,7 +4,8 @@ WORKDIR /usr/src/app
 
 COPY package.json pnpm-lock.yaml ./
 
-RUN corepack enable pnpm && pnpm install
+RUN npm install -g pnpm
+RUN pnpm install
 
 COPY prisma ./prisma
 
