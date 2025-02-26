@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CreateSpaceDto } from './dto/create-space.dto';
 import { UpdateSpaceDto } from './dto/update-space.dto';
@@ -146,15 +147,166 @@ export class SpaceService {
 
     const members = await this.databaseService.member.findMany({
       where: { spaceIds: { has: spaceId } },
-      include: {
+      select: {
         User: {
           select: {
             id: true,
             name: true,
-            email: true,
+          },
+        },
+        id: true,
+        role: true,
+      },
+    });
+
+    const transformedMembers = members.map((member) => ({
+      id: member.id,
+      role: member.role,
+      name: member.User.name,
+      userId: member.User.id,
+    }));
+
+    return { members: transformedMembers };
+  }
+
+  async addMemberToSpace(spaceId: string, userId: string, memberId: string) {
+    // Check if space exists and get workspaceId
+    const spaceExists = await this.databaseService.space.findUnique({
+      where: { id: spaceId },
+      select: { workspaceId: true },
+    });
+
+    if (!spaceExists) {
+      throw new NotFoundException(`Space with ID ${spaceId} not found`);
+    }
+
+    // Verify user is an admin in the workspace
+    const adminUser = await this.databaseService.member.findFirst({
+      where: {
+        userId,
+        workspaceId: spaceExists.workspaceId,
+        role: 'ADMIN',
+      },
+      select: { id: true },
+    });
+
+    if (!adminUser) {
+      throw new NotFoundException(
+        `User with ID ${userId} does not have admin privileges in this workspace`,
+      );
+    }
+
+    // Check if member exists in the workspace
+    const existingMember = await this.databaseService.member.findFirst({
+      where: {
+        userId: memberId,
+        workspaceId: spaceExists.workspaceId,
+      },
+      select: { id: true, spaceIds: true },
+    });
+
+    if (!existingMember) {
+      throw new BadRequestException(
+        `User with ID ${memberId} does not exist in this workspace. Add the user to the workspace before adding to the space.`,
+      );
+    }
+
+    // Avoid duplicate spaceId in spaceIds array
+    if (existingMember.spaceIds.includes(spaceId)) {
+      return;
+    }
+
+    // Update member's spaceIds
+    const updatedMember = await this.databaseService.member.update({
+      where: { id: existingMember.id },
+      data: {
+        spaceIds: {
+          push: spaceId,
+        },
+      },
+    });
+
+    return updatedMember;
+  }
+
+  async removeMemberFromSpace(
+    spaceId: string,
+    userId: string,
+    memberId: string,
+  ) {
+    // Check if space exists and get workspaceId
+    const spaceExists = await this.databaseService.space.findUnique({
+      where: { id: spaceId },
+      select: {
+        workspaceId: true,
+        Workspace: {
+          select: {
+            owner: {
+              select: {
+                id: true,
+              },
+            },
           },
         },
       },
     });
+
+    if (!spaceExists) {
+      throw new NotFoundException(`Space with ID ${spaceId} not found`);
+    }
+
+    // Verify user is an admin in the workspace
+    const adminUser = await this.databaseService.member.findFirst({
+      where: {
+        userId,
+        workspaceId: spaceExists.workspaceId,
+        role: 'ADMIN',
+      },
+      select: { id: true },
+    });
+
+    if (!adminUser) {
+      throw new NotFoundException(
+        `User with ID ${userId} does not have admin privileges in this workspace`,
+      );
+    }
+
+    // Check if member exists in the workspace and space
+    const existingMember = await this.databaseService.member.findFirst({
+      where: {
+        id: memberId,
+        workspaceId: spaceExists.workspaceId,
+      },
+      select: { id: true, spaceIds: true, userId: true },
+    });
+
+    if (!existingMember) {
+      throw new BadRequestException(
+        `User with ID ${memberId} does not exist in this workspace.`,
+      );
+    }
+
+    if (spaceExists.Workspace.owner.id === existingMember.userId) {
+      throw new ForbiddenException(
+        'Cannot remove the workspace owner from the space.',
+      );
+    }
+
+    // Check if member is in the space
+    if (!existingMember.spaceIds.includes(spaceId)) {
+      return; // Member isn’t in the space, no action needed
+    }
+
+    // Remove spaceId from member's spaceIds
+    const updatedMember = await this.databaseService.member.update({
+      where: { id: existingMember.id },
+      data: {
+        spaceIds: {
+          set: existingMember.spaceIds.filter((id) => id !== spaceId),
+        },
+      },
+    });
+
+    return updatedMember;
   }
 }

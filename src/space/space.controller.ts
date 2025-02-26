@@ -18,6 +18,28 @@ import { User, UserType } from 'src/common/decorators/user.decorator';
 export class SpaceController {
   constructor(private readonly spaceService: SpaceService) {}
 
+  @Post('/:spaceId/member')
+  async addMemberToSpace(
+    @Param('spaceId') spaceId: string,
+    @User() user: UserType,
+    @Body('memberId') memberId: string,
+  ) {
+    return await this.spaceService.addMemberToSpace(spaceId, user.id, memberId);
+  }
+
+  @Delete('/:spaceId/member/:memberId')
+  async removeMemberFromSpace(
+    @Param('spaceId') spaceId: string,
+    @Param('memberId') memberId: string,
+    @User() user: UserType,
+  ) {
+    return await this.spaceService.removeMemberFromSpace(
+      spaceId,
+      user.id,
+      memberId,
+    );
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createSpaceDto: CreateSpaceDto, @User() user: UserType) {

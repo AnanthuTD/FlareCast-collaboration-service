@@ -104,17 +104,17 @@ export class WorkspaceController {
   }
 
   @Get(':workspaceId/search')
-  async searchMembers(
+  searchMembers(
     @Param('workspaceId') workspaceId: string,
     @Query('q') query: string = '',
     @Query('spaceId') spaceId: string = '',
     @User() user: UserType,
   ) {
-    return this.workspaceService.searchMembers(
+    return this.workspaceService.searchMembers({
       workspaceId,
       spaceId,
       query,
-      user.id,
-    );
+      userId: user.id,
+    });
   }
 }

@@ -540,26 +540,30 @@ export class WorkspaceService implements OnModuleInit {
     };
   }
 
-  async searchMembers(
-    workspaceId: string,
-    spaceId: string,
-    query: string,
-    userId: string,
-  ) {
+  async searchMembers({
+    workspaceId,
+    spaceId,
+    query,
+    userId,
+  }: {
+    workspaceId: string;
+    spaceId?: string;
+    query: string;
+    userId: string;
+  }) {
     if (!query.trim()) {
-      return [];
+      return { members: [], message: 'No query provided.' };
     }
 
-    // Use MongoDB Atlas Full-Text Search via `aggregateRaw`
-    const result = await this.databaseService.user.aggregateRaw({
-      pipeline: [
+    try {
+      const pipeline = [
         {
           $search: {
-            index: 'name', // Ensure this matches your search index name
+            index: 'name',
             autocomplete: {
-              query: query,
+              query,
               path: 'name',
-              fuzzy: { maxEdits: 1 }, // Allows minor typos
+              fuzzy: { maxEdits: 1 },
             },
           },
         },
@@ -573,46 +577,37 @@ export class WorkspaceService implements OnModuleInit {
         },
         {
           $match: {
-            'membership.workspaceId': { $oid: workspaceId },
+            'membership.workspaceId': { $eq: { $oid: workspaceId } },
             'membership.userId': { $ne: { $oid: userId } },
+            ...(spaceId
+              ? { 'membership.spaceIds': { $nin: [{ $oid: spaceId }] } }
+              : {}),
           },
         },
-        ...(spaceId
-          ? [
-              {
-                $lookup: {
-                  from: 'Member',
-                  localField: '_id',
-                  foreignField: 'userId',
-                  as: 'spaceMembership',
-                },
-              },
-              {
-                $match: {
-                  'spaceMembership.spaceId': { $ne: { $oid: spaceId } }, // Exclude users already in the space
-                },
-              },
-            ]
-          : []),
         {
           $project: {
             id: { $toString: '$_id' },
             name: 1,
             email: 1,
             role: { $arrayElemAt: ['$membership.role', 0] },
-            createdAt: { $arrayElemAt: ['$membership.createdAt', 0] },
+            createdAt: {
+              $toString: { $arrayElemAt: ['$membership.createdAt', 0] },
+            },
           },
         },
-        {
-          $limit: 10, // Prevents large query loads
-        },
-      ],
-    });
+      ];
 
-    return {
-      members: result,
-      message: `Found ${result.length} members matching "${query}", excluding those already in space "${spaceId}".`,
-    };
+      const result = await this.databaseService.user.aggregateRaw({ pipeline });
+
+      const message = spaceId
+        ? `Found ${result.length} members matching "${query}", excluding those in space "${spaceId}".`
+        : `Found ${result.length} members matching "${query}" in workspace "${workspaceId}".`;
+
+      return { members: result, message };
+    } catch (error) {
+      console.error(`Error searching members: ${error.message}`);
+      throw new Error('Failed to search members');
+    }
   }
 
   getWorkspacesEvent(userId: string): Observable<MessageEvent> {
@@ -643,4 +638,35 @@ export class WorkspaceService implements OnModuleInit {
       });
     }
   }
+
+  /* async searchMembers({
+    query,
+    workspaceId,
+  }: {
+    query: string;
+    workspaceId: string;
+  }): Promise<{ id: string; name: string }[]> {
+    try {
+      const members = await this.databaseService.user.findMany({
+        where: {
+          OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { email: { contains: query, mode: 'insensitive' } },
+          ],
+          workspaces: { some: { id: workspaceId } },
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+        take: 10,
+        orderBy: { name: 'asc' },
+      });
+
+      return members;
+    } catch (error) {
+      console.error(`Error searching members: ${error.message}`);
+      throw new Error('Failed to search members');
+    }
+  } */
 }
