@@ -234,9 +234,9 @@ export class InvitationService {
         data: {
           workspaceId: invitation.workspaceId,
           userId: receiverId,
-          spaceIds: {
+          /*  spaceIds: {
             set: [space.id],
-          },
+          }, */
         },
       });
 
