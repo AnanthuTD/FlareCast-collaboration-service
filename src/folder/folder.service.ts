@@ -61,7 +61,7 @@ export class FolderService {
     workspaceId?: string;
     spaceId?: string;
   }) {
-    if (!workspaceId || !spaceId) {
+    if (!workspaceId && !spaceId) {
       throw new BadRequestException('Required workspaceId or spaceId');
     }
 

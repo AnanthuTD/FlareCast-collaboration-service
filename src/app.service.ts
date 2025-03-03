@@ -28,14 +28,14 @@ export class AppService {
     );
 
     // Check destination permissions and ensure no cross-workspace sharing
-    await this.verifyDestinationPermission(
+    const result = await this.verifyDestinationPermission(
       userId,
       sourceWorkspaceId,
       destination,
       requiredRoles,
     );
 
-    return { permission: 'granted' };
+    return { permission: 'granted', ...result };
   }
 
   /**
@@ -53,7 +53,7 @@ export class AppService {
         requiredRoles,
         folderId: source.folderId,
       });
-      return folder.workspaceId; // Return workspace ID for cross-checking
+      return folder.workspaceId;
     }
 
     const workspace = await this.folderService.checkWorkspacePermission({
@@ -88,6 +88,12 @@ export class AppService {
           'Cannot share files across different workspaces.',
         );
       }
+
+      return {
+        folderId: folder.id,
+        spaceId: folder.spaceId,
+        workspaceId: folder.workspaceId,
+      };
     } else if (destination.spaceId) {
       const space = await this.folderService.checkWorkspacePermission({
         userId,
@@ -101,6 +107,12 @@ export class AppService {
           'Cannot share files across different workspaces.',
         );
       }
+
+      return {
+        folderId: null,
+        spaceId: destination.spaceId,
+        workspaceId: sourceWorkspaceId,
+      };
     } else {
       throw new ForbiddenException(
         'Invalid destination: Either folderId or spaceId must be provided.',
