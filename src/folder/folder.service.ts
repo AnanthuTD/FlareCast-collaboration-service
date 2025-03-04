@@ -379,7 +379,7 @@ export class FolderService {
     });
 
     // Convert spaceIds to MongoDB ObjectId format
-    const spaceObjectIds = member.spaceIds.map((spaceId) => ({
+    const spaceObjectIds = member?.spaceIds.map((spaceId) => ({
       $oid: spaceId,
     }));
 
