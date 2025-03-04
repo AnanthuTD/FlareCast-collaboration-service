@@ -368,9 +368,9 @@ export class FolderService {
     if (!query || query.trim() === '') return { results: [] };
 
     // Fetch accessible spaceIds
-    const member = await this.databaseService.member.findUnique({
+    const member = await this.databaseService.member.findFirst({
       where: {
-        id: userId,
+        userId: userId,
         workspaceId,
       },
       select: {
