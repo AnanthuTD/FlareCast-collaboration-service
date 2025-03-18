@@ -57,67 +57,66 @@ export class WorkspaceService implements OnModuleInit {
   async onModuleInit() {
     try {
       await this.kafkaService.subscribeToTopic(
-        'user-events',
+        Topics.USER_VERIFIED_EVENT,
         async (topic, message) => {
-          if (topic === 'user-events') {
-            const { userId, firstName, email } = message.value;
-            this.logger.log(`User created: ${userId}`);
+          const { userId, firstName, email } = message.value;
+          this.logger.log(`User created: ${userId}`);
 
-            await this.databaseService.$transaction(async (tx) => {
-              await tx.user.upsert({
-                where: { id: userId },
-                create: { email, name: firstName, id: userId },
-                update: { name: firstName },
-              });
-
-              // create default workspace
-              const workspace = await tx.workSpace.create({
-                data: {
-                  userId,
-                  name: `${firstName}'s Workspace`,
-                  type: 'PERSONAL',
-                },
-              });
-
-              const space = await tx.space.create({
-                data: {
-                  workspaceId: workspace.id,
-                  name: workspace.name,
-                  type: 'DEFAULT',
-                },
-              });
-
-              await tx.user.update({
-                where: { id: userId },
-                data: {
-                  selectedWorkspace: workspace.id,
-                },
-              });
-
-              await tx.member.create({
-                data: {
-                  workspaceId: workspace.id,
-                  userId,
-                  role: 'ADMIN',
-                  spaceIds: {
-                    set: [space.id],
-                  },
-                },
-              });
-
-              // send message to the user when workspace is created.
-              this.workspacesGateway.emitToUser(
-                userId,
-                SOCKET_EVENTS.WORKSPACE_CREATED,
-                {
-                  workspaces: [workspace],
-                },
-              );
+          await this.databaseService.$transaction(async (tx) => {
+            await tx.user.upsert({
+              where: { id: userId },
+              create: { email, name: firstName, id: userId },
+              update: { name: firstName },
             });
-          }
+
+            // create default workspace
+            const workspace = await tx.workSpace.create({
+              data: {
+                userId,
+                name: `${firstName}'s Workspace`,
+                type: 'PERSONAL',
+              },
+            });
+
+            const space = await tx.space.create({
+              data: {
+                workspaceId: workspace.id,
+                name: workspace.name,
+                type: 'DEFAULT',
+              },
+            });
+
+            await tx.user.update({
+              where: { id: userId },
+              data: {
+                selectedWorkspace: workspace.id,
+              },
+            });
+
+            await tx.member.create({
+              data: {
+                workspaceId: workspace.id,
+                userId,
+                role: 'ADMIN',
+                spaceIds: {
+                  set: [space.id],
+                },
+              },
+            });
+
+            // send message to the user when workspace is created.
+            this.workspacesGateway.emitToUser(
+              userId,
+              SOCKET_EVENTS.WORKSPACE_CREATED,
+              {
+                workspaces: [workspace],
+              },
+            );
+          });
         },
       );
     } catch (error) {
+      console.log(error);
       this.logger.error('Failed to subscribe to Kafka topic:', error.message);
     }
   }
@@ -131,11 +130,19 @@ export class WorkspaceService implements OnModuleInit {
     // Validate userId before proceeding
     const userExists = await this.databaseService.user.findUnique({
       where: { id: createWorkspaceDto.userId },
-      select: { id: true },
+      select: { id: true, maxWorkspaces: true },
     });
 
     if (!userExists) {
       throw new BadRequestException('Invalid userId: User does not exist.');
+    }
+
+    const currentWorkspaceCount = await this.databaseService.workSpace.count({
+      where: { userId: createWorkspaceDto.userId },
+    });
+
+    if (userExists.maxWorkspaces <= currentWorkspaceCount) {
+      throw new ForbiddenException('Maximum workspace limit reached.');
     }
 
     const members = createWorkspaceDto.members ?? [];

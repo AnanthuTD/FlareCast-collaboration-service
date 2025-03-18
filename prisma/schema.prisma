@@ -17,6 +17,8 @@ model User {
   selectedWorkspace    String?     @db.ObjectId
   selectedWorkspaceRel WorkSpace?  @relation("selected-workspace", fields: [selectedWorkspace], references: [id], onDelete: NoAction, onUpdate: NoAction)
   Chats                Chat[]
+  maxWorkspaces        Int         @default(1)
+  maxMembers           Int         @default(1)
 }
 
 model WorkSpace {

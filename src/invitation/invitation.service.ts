@@ -47,6 +47,8 @@ export class InvitationService {
         this.validationService.validate('email', { email }),
       );
 
+      await this.checkWorkspaceMemberLimitWithCount({ workspaceId });
+
       return await this.databaseService.$transaction(async (tx) => {
         // ✅ Fetch existing users in a single query
         const users = await tx.user.findMany({
@@ -172,6 +174,35 @@ export class InvitationService {
     }
   }
 
+  private async checkWorkspaceMemberLimitWithCount(invitation: {
+    workspaceId: string;
+  }): Promise<void> {
+    const workspace = await this.databaseService.workSpace.findUnique({
+      where: { id: invitation.workspaceId },
+      select: {
+        owner: {
+          select: { maxMembers: true },
+        },
+        _count: {
+          select: { members: true },
+        },
+      },
+    });
+
+    if (!workspace) {
+      throw new BadRequestException(
+        `Workspace with ID ${invitation.workspaceId} not found`,
+      );
+    }
+
+    const maxMembers = workspace.owner?.maxMembers ?? 0;
+    const currentMemberCount = workspace._count.members;
+
+    if (currentMemberCount >= maxMembers) {
+      throw new ForbiddenException('Workspace has reached its member limit');
+    }
+  }
+
   async accept(token: string) {
     if (!token) throw new BadRequestException('Token is required');
 
@@ -183,6 +214,10 @@ export class InvitationService {
       });
 
       if (!invitation) throw new NotFoundException('Invitation not found!');
+
+      await this.checkWorkspaceMemberLimitWithCount({
+        workspaceId: invitation.workspaceId,
+      });
 
       let receiverId = invitation.receiverId;
 
