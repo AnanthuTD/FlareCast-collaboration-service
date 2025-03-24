@@ -1,10 +1,14 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Member } from '@prisma/client';
 import { FolderService } from './folder/folder.service';
+import { DatabaseService } from './database/database.service';
 
 @Injectable()
 export class AppService {
-  constructor(private readonly folderService: FolderService) {}
+  constructor(
+    private readonly folderService: FolderService,
+    private readonly databaseService: DatabaseService,
+  ) {}
   getHello(): string {
     return 'Hello World!';
   }
@@ -118,5 +122,21 @@ export class AppService {
         'Invalid destination: Either folderId or spaceId must be provided.',
       );
     }
+  }
+
+  async isMember(
+    spaceId: string,
+    userId: string,
+  ): Promise<{ isMember: boolean }> {
+    const member = await this.databaseService.space.findFirst({
+      where: {
+        id: spaceId,
+        memberIds: {
+          has: userId,
+        },
+      },
+    });
+
+    return { isMember: !!member };
   }
 }

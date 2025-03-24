@@ -19,6 +19,7 @@ import { FolderService } from './folder/folder.service';
 import { CommonModule } from './common/common.module';
 import { FoldersGateway } from './folder/folders.gateway';
 import { ChatsModule } from './chats/chats.module';
+import { DatabaseService } from './database/database.service';
 
 @Module({
   imports: [
@@ -74,9 +75,10 @@ import { ChatsModule } from './chats/chats.module';
     SpaceModule,
     CommonModule,
     ChatsModule,
+    DatabaseModule,
   ],
   controllers: [AppController],
-  providers: [AppService, FolderService, FoldersGateway],
+  providers: [AppService, FolderService, FoldersGateway, DatabaseService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
@@ -85,6 +87,10 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'invitation/accept', method: RequestMethod.POST },
         { path: '/permissions/share-file', method: RequestMethod.POST },
+        {
+          path: '/permissions/share-filepermissions/:spaceId/space/:userId/isMember',
+          method: RequestMethod.GET,
+        },
         { path: '/', method: RequestMethod.GET },
         { path: 'workspace/selected', method: RequestMethod.POST },
         { path: 'workspace/:userId/selected', method: RequestMethod.GET },
