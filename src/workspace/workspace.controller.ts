@@ -95,11 +95,13 @@ export class WorkspaceController {
     @Param('userId') userId: string,
     @Query('workspaceId') workspaceId: string,
     @Query('folderId') folderId: string,
+    @Query('spaceId') spaceId: string,
   ) {
     return this.workspaceService.getSelectedWorkspace(
       userId,
       workspaceId,
       folderId,
+      spaceId,
     );
   }
 

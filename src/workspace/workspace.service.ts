@@ -480,7 +480,41 @@ export class WorkspaceService implements OnModuleInit {
     userId: string,
     workspaceId?: string,
     folderId?: string,
+    spaceId?: string,
   ) {
+    if (spaceId) {
+      // Find the workspace with the given ID where the user is a member
+      const space = await this.databaseService.space.findFirst({
+        where: {
+          id: spaceId,
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+        select: { id: true, workspaceId: true },
+      });
+
+      // If the space exists, check for the folder
+      if (space) {
+        const folder = folderId
+          ? await this.databaseService.folder.findUnique({
+              where: { id: folderId, workspaceId },
+              select: { id: true },
+            })
+          : null;
+
+        return {
+          selectedSpace: space.id,
+          selectedFolder: folder ? folder.id : null,
+          selectedWorkspace: space.workspaceId,
+          message: `space ${space.id} is selected. ${
+            folder ? `Folder ${folder.id} is selected.` : 'No folder selected.'
+          }`,
+        };
+      }
+    }
     if (workspaceId) {
       // Find the workspace with the given ID where the user is a member
       const workspace = await this.databaseService.workSpace.findFirst({
@@ -538,6 +572,8 @@ export class WorkspaceService implements OnModuleInit {
       where: { userId },
       select: { id: true },
     });
+
+    console.log('default workspace: ', defaultWorkspace);
 
     return {
       selectedWorkspace: defaultWorkspace?.id || null,
