@@ -383,18 +383,14 @@ export class FolderService {
       $oid: spaceId,
     }));
 
+    console.log('spaceObjectIds: ', spaceObjectIds);
+
     // Search folders with Atlas Search
     const searchStage: any = {
       $search: {
         index: 'default',
         compound: {
           must: [
-            {
-              in: {
-                path: 'spaceId',
-                value: spaceObjectIds,
-              },
-            },
             {
               autocomplete: {
                 query,
@@ -404,6 +400,21 @@ export class FolderService {
               },
             },
           ],
+          should: [
+            {
+              in: {
+                path: 'spaceId',
+                value: spaceObjectIds,
+              },
+            },
+            {
+              in: {
+                path: 'workspaceId',
+                value: [{ $oid: workspaceId }],
+              },
+            },
+          ],
+          minimumShouldMatch: 1, // At least one of spaceId or workspaceId must match
         },
       },
     };
@@ -414,26 +425,24 @@ export class FolderService {
     }
 
     // Execute search with pagination
-    const folders = await this.databaseService.folder
-      .aggregateRaw({
-        pipeline: [
-          searchStage,
-          { $limit: parseInt(limit) },
-          {
-            $project: {
-              name: 1,
-              spaceId: 1,
-              _id: 0,
-              score: { $meta: 'searchScore' },
-              createdAt: { $toString: '$createdAt' },
-            },
+    const folders = await this.databaseService.folder.aggregateRaw({
+      pipeline: [
+        searchStage,
+        { $limit: parseInt(limit) },
+        {
+          $project: {
+            name: 1,
+            _id: 0,
+            score: { $meta: 'searchScore' },
+            createdAt: { $toString: '$createdAt' },
+            spaceId: { $toString: '$spaceId' },
+            id: { $toString: '$_id' },
           },
-        ],
-      })
-      .catch((error) => {
-        console.error('Search failed:', error);
-        throw new Error('Folder search failed');
-      });
+        },
+      ],
+    });
+
+    console.log('folders: ', folders);
 
     return { results: folders };
   }

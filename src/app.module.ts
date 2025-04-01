@@ -88,7 +88,7 @@ export class AppModule implements NestModule {
         { path: 'invitation/accept', method: RequestMethod.POST },
         { path: '/permissions/share-file', method: RequestMethod.POST },
         {
-          path: '/permissions/share-filepermissions/:spaceId/space/:userId/isMember',
+          path: '/permissions/:spaceId/space/:userId/isMember',
           method: RequestMethod.GET,
         },
         { path: '/', method: RequestMethod.GET },

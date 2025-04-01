@@ -128,14 +128,16 @@ export class AppService {
     spaceId: string,
     userId: string,
   ): Promise<{ isMember: boolean }> {
-    const member = await this.databaseService.space.findFirst({
+    const member = await this.databaseService.member.findFirst({
       where: {
-        id: spaceId,
-        memberIds: {
-          has: userId,
+        userId: userId,
+        spaceIds: {
+          has: spaceId,
         },
       },
     });
+
+    console.log(member);
 
     return { isMember: !!member };
   }

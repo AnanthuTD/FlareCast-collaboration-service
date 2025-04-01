@@ -26,7 +26,7 @@ export class FolderController {
     @Query('limit') limit = '10',
     @Query('paginationToken') paginationToken?: string,
   ) {
-    this.folderService.searchFolder({
+    return this.folderService.searchFolder({
       workspaceId,
       query,
       userId: user.id,
