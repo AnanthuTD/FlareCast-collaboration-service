@@ -20,6 +20,7 @@ export class KafkaConsumerService implements OnModuleInit {
           value: { userId: string; maxMembers: number; maxWorkspaces: number };
         },
       ) => {
+        console.log(`New ${Topics.USER_SUBSCRIPTION_UPDATED} received}`, value);
         await this.databaseService.user.update({
           where: { id: value.userId },
           data: {
