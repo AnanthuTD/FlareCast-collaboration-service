@@ -29,149 +29,150 @@ export class InvitationService {
   ) {}
 
   async create(workspaceId: string, userId: string, invites: string[]) {
-    try {
-      // ✅ Check user authorization
-      const workspaceData =
-        await this.workspaceMemberService.userHasInviteAuthority({
+    // ✅ Check user authorization
+    const workspaceData =
+      await this.workspaceMemberService.userHasInviteAuthority({
+        workspaceId,
+        userId,
+      });
+    if (!workspaceData) {
+      throw new ForbiddenException(
+        'User does not have authority to invite members',
+      );
+    }
+
+    // ✅ Validate all emails in one go
+    invites.forEach((email) =>
+      this.validationService.validate('email', { email }),
+    );
+
+    await this.checkWorkspaceMemberLimitWithCount({ workspaceId });
+
+    return await this.databaseService.$transaction(async (tx) => {
+      // ✅ Fetch existing users in a single query
+      const users = await tx.user.findMany({
+        where: { email: { in: invites } },
+        select: { id: true, email: true },
+      });
+
+      // ✅ Get existing workspace members
+      const existingMembers = new Set(
+        (
+          await tx.member.findMany({
+            where: {
+              workspaceId,
+              userId: { in: users.map((user) => user.id) },
+            },
+            select: { userId: true },
+          })
+        ).map((member) => member.userId),
+      );
+
+      // ✅ Filter registered users who are NOT already in the workspace
+      const registeredUsersToInvite = users.filter(
+        (user) => !existingMembers.has(user.id),
+      );
+
+      // ✅ Get emails of unregistered users
+      const registeredEmails = new Set(users.map((user) => user.email));
+      const unregisteredEmails = invites.filter(
+        (email) => !registeredEmails.has(email),
+      );
+
+      // ✅ Fetch existing invites (to prevent duplicate invites)
+      const existingInvites = await tx.invite.findMany({
+        where: {
           workspaceId,
-          userId,
+          OR: [
+            { receiverId: { in: registeredUsersToInvite.map((u) => u.id) } },
+            { receiverEmail: { in: unregisteredEmails } },
+          ],
+          invitationStatus: 'PENDING',
+        },
+        select: { receiverId: true, receiverEmail: true },
+      });
+
+      const existingInviteIds = new Set(
+        existingInvites.map((i) => i.receiverId),
+      );
+      const existingInviteEmails = new Set(
+        existingInvites.map((i) => i.receiverEmail),
+      );
+
+      console.log('Registered emails: ', registeredEmails);
+      console.log('Unregistered emails: ', unregisteredEmails);
+
+      // ✅ Prepare new invitations
+      const invitesToCreate = [
+        ...registeredUsersToInvite
+          .filter((user) => !existingInviteIds.has(user.id))
+          .map((user) => ({
+            workspaceId,
+            senderId: userId,
+            receiverId: user.id,
+            receiverEmail: user.email,
+            invitationStatus: 'PENDING',
+          })),
+
+        ...unregisteredEmails
+          .filter((email) => !existingInviteEmails.has(email))
+          .map((email) => ({
+            workspaceId,
+            senderId: userId,
+            receiverEmail: email,
+            invitationStatus: 'PENDING',
+          })),
+      ] as unknown as Invite[];
+
+      console.log('invitesToCreate: ', invitesToCreate);
+
+      if (invitesToCreate.length > 0) {
+        // ✅ Bulk insert invitations
+        await tx.invite.createMany({
+          data: invitesToCreate,
         });
-      if (!workspaceData) {
-        throw new ForbiddenException(
-          'User does not have authority to invite members',
+
+        // ✅ Fetch inserted invites manually since createMany() doesn't return them
+        const insertedInvites = await tx.invite.findMany({
+          where: {
+            workspaceId,
+            receiverEmail: {
+              in: invitesToCreate.map((i) => i.receiverEmail),
+            },
+            invitationStatus: 'PENDING',
+            senderId: userId,
+          },
+          select: { id: true, receiverEmail: true, receiverId: true },
+        });
+
+        console.log('insertedInvites: ', insertedInvites);
+
+        // ✅ Send Kafka Notification
+        await this.kafkaService.sendMessageToTopic(
+          Topics.NOTIFICATION_EVENT,
+          'Invitation',
+          {
+            workspaceId: workspaceData.workspaceId,
+            workspaceName: workspaceData.Workspace.name,
+            senderId: userId,
+            invites: insertedInvites.map((invite) => ({
+              receiverEmail: invite.receiverEmail,
+              url: `${process.env.FRONTEND_INVITATION_ROUTE ?? ''}?token=${invite.id}`,
+              receiverId: invite.receiverId,
+              invitationId: invite.id,
+            })),
+            eventType: NOTIFICATION_EVENT_TYPE.WORKSPACE_INVITATION,
+            timestamp: Date.now(),
+          } as WorkspaceInvitationNotificationEvent,
         );
       }
 
-      // ✅ Validate all emails in one go
-      invites.forEach((email) =>
-        this.validationService.validate('email', { email }),
-      );
-
-      await this.checkWorkspaceMemberLimitWithCount({ workspaceId });
-
-      return await this.databaseService.$transaction(async (tx) => {
-        // ✅ Fetch existing users in a single query
-        const users = await tx.user.findMany({
-          where: { email: { in: invites } },
-          select: { id: true, email: true },
-        });
-
-        // ✅ Get existing workspace members
-        const existingMembers = new Set(
-          (
-            await tx.member.findMany({
-              where: {
-                workspaceId,
-                userId: { in: users.map((user) => user.id) },
-              },
-              select: { userId: true },
-            })
-          ).map((member) => member.userId),
-        );
-
-        // ✅ Filter registered users who are NOT already in the workspace
-        const registeredUsersToInvite = users.filter(
-          (user) => !existingMembers.has(user.id),
-        );
-
-        // ✅ Get emails of unregistered users
-        const registeredEmails = new Set(users.map((user) => user.email));
-        const unregisteredEmails = invites.filter(
-          (email) => !registeredEmails.has(email),
-        );
-
-        // ✅ Fetch existing invites (to prevent duplicate invites)
-        const existingInvites = await tx.invite.findMany({
-          where: {
-            workspaceId,
-            OR: [
-              { receiverId: { in: registeredUsersToInvite.map((u) => u.id) } },
-              { receiverEmail: { in: unregisteredEmails } },
-            ],
-            invitationStatus: 'PENDING',
-          },
-          select: { receiverId: true, receiverEmail: true },
-        });
-
-        const existingInviteIds = new Set(
-          existingInvites.map((i) => i.receiverId),
-        );
-        const existingInviteEmails = new Set(
-          existingInvites.map((i) => i.receiverEmail),
-        );
-
-        // ✅ Prepare new invitations
-        const invitesToCreate = [
-          ...registeredUsersToInvite
-            .filter((user) => !existingInviteIds.has(user.id))
-            .map((user) => ({
-              workspaceId,
-              senderId: userId,
-              receiverId: user.id,
-              receiverEmail: user.email,
-              invitationStatus: 'PENDING',
-            })),
-
-          ...unregisteredEmails
-            .filter((email) => !existingInviteEmails.has(email))
-            .map((email) => ({
-              workspaceId,
-              senderId: userId,
-              receiverEmail: email,
-              invitationStatus: 'PENDING',
-            })),
-        ] as unknown as Invite[];
-
-        if (invitesToCreate.length > 0) {
-          // ✅ Bulk insert invitations
-          await tx.invite.createMany({ data: invitesToCreate });
-
-          // ✅ Fetch inserted invites manually since createMany() doesn't return them
-          const insertedInvites = await tx.invite.findMany({
-            where: {
-              workspaceId,
-              receiverEmail: {
-                in: invitesToCreate.map((i) => i.receiverEmail),
-              },
-            },
-            select: { id: true, receiverEmail: true, receiverId: true },
-          });
-
-          // ✅ Send Kafka Notification
-          await this.kafkaService.sendMessageToTopic(
-            Topics.NOTIFICATION_EVENT,
-            'Invitation',
-            {
-              workspaceId: workspaceData.id,
-              workspaceName: workspaceData.name,
-              senderId: userId,
-              invites: insertedInvites.map((invite) => ({
-                receiverEmail: invite.receiverEmail,
-                url: `${process.env.FRONTEND_INVITATION_ROUTE ?? ''}?token=${invite.id}`,
-                receiverId: invite.receiverId,
-                invitationId: invite.id,
-              })),
-              eventType: NOTIFICATION_EVENT_TYPE.WORKSPACE_INVITATION,
-              timestamp: Date.now(),
-            } as WorkspaceInvitationNotificationEvent,
-          );
-        }
-
-        return {
-          success: true,
-          invitedCount: invitesToCreate.length,
-          message: 'Invitation send successfully',
-        };
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to invite members: ${error.message}`,
-        error.stack,
-      );
-      throw new InternalServerErrorException(
-        `Failed to invite members: ${error.message}`,
-      );
-    }
+      return {
+        success: true,
+        invitedCount: invitesToCreate.length,
+        message: 'Invitation send successfully',
+      };
+    });
   }
 
   private async checkWorkspaceMemberLimitWithCount(invitation: {

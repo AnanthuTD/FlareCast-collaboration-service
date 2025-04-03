@@ -68,8 +68,11 @@ export class WorkspaceMemberService {
     workspaceId: string;
     userId: string;
   }) {
-    const workSpace = await this.databaseService.workSpace.findFirst({
-      where: { id: workspaceId, members: { some: { userId, role: 'ADMIN' } } },
+    const workSpace = await this.databaseService.member.findFirst({
+      where: { userId, workspaceId, role: 'ADMIN' },
+      include: {
+        Workspace: true,
+      },
     });
 
     return workSpace;

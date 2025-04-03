@@ -94,6 +94,8 @@ export class AppModule implements NestModule {
         { path: '/', method: RequestMethod.GET },
         { path: 'workspace/selected', method: RequestMethod.POST },
         { path: 'workspace/:userId/selected', method: RequestMethod.GET },
+        { path: 'invitation/accept', method: RequestMethod.POST },
+        { path: 'invitation/reject', method: RequestMethod.POST },
       )
       .forRoutes('*');
   }
