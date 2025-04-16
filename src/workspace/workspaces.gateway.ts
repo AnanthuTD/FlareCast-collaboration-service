@@ -2,7 +2,7 @@ import { WebSocketGateway, SubscribeMessage } from '@nestjs/websockets';
 import { BaseGateway } from '../common/base.gateway';
 import { SOCKET_EVENTS } from 'src/common/events';
 
-@WebSocketGateway({ namespace: 'workspace' })
+@WebSocketGateway({ namespace: 'workspaces' })
 export class WorkspacesGateway extends BaseGateway {
   @SubscribeMessage(SOCKET_EVENTS.WORKSPACE_UPDATES)
   handleWorkspaceUpdates(

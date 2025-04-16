@@ -17,7 +17,7 @@ import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { Member } from '@prisma/client';
 import { Observable } from 'rxjs';
 
-@Controller('workspace')
+@Controller('workspaces')
 export class WorkspaceController {
   constructor(private readonly workspaceService: WorkspaceService) {}
 

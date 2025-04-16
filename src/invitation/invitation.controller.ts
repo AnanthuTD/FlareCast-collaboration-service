@@ -3,7 +3,7 @@ import { InvitationService } from './invitation.service';
 import { User, UserType } from 'src/common/decorators/user.decorator';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
 
-@Controller('invitation')
+@Controller('invitations')
 export class InvitationController {
   constructor(private readonly invitationService: InvitationService) {}
 

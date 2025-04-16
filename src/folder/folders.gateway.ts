@@ -10,7 +10,7 @@ import { Folder } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
-  namespace: '/folder',
+  namespace: '/folders',
   /*  cors: {
     cors: true,
     origin: ['*'],

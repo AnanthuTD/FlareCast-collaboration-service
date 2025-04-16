@@ -82,7 +82,7 @@ import { DatabaseService } from './database/database.service';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
+    /*  consumer
       .apply(JwtMiddleware)
       .exclude(
         { path: 'invitation/accept', method: RequestMethod.POST },
@@ -97,6 +97,6 @@ export class AppModule implements NestModule {
         { path: 'invitation/accept', method: RequestMethod.POST },
         { path: 'invitation/reject', method: RequestMethod.POST },
       )
-      .forRoutes('*');
+      .forRoutes('*'); */
   }
 }

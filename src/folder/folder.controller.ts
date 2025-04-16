@@ -14,7 +14,7 @@ import { CreateFolderDto } from './dto/create-folder.dto';
 import { RenameFolderDto } from './dto/rename-folder.dto';
 import { User, UserType } from 'src/common/decorators/user.decorator';
 
-@Controller('folder')
+@Controller('folders')
 export class FolderController {
   constructor(private readonly folderService: FolderService) {}
 

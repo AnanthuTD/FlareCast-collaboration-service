@@ -14,7 +14,7 @@ import { CreateSpaceDto } from './dto/create-space.dto';
 import { UpdateSpaceDto } from './dto/update-space.dto';
 import { User, UserType } from 'src/common/decorators/user.decorator';
 
-@Controller('space')
+@Controller('spaces')
 export class SpaceController {
   constructor(private readonly spaceService: SpaceService) {}
 
