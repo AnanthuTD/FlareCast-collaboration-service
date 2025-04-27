@@ -122,8 +122,8 @@ export class FolderService {
     spaceId,
     createdAt,
     lastFolderId,
-    limit,
-    skip,
+    limit = 10,
+    skip = 0,
   }: {
     workspaceId: string;
     userId: string;
@@ -132,33 +132,55 @@ export class FolderService {
     skip?: number;
     limit?: number;
     lastFolderId?: string;
-    createdAt?: Date;
+    createdAt?: Date | string;
   }) {
-    console.log(workspaceId, folderId, userId, spaceId);
+    console.log(workspaceId, folderId, userId, spaceId, createdAt);
 
     await this.validateMembership({ workspaceId, userId, spaceId });
+
+    const createdAtDate = createdAt ? new Date(createdAt) : undefined;
 
     const folders = await this.databaseService.folder.findMany({
       where: {
         workspaceId,
-        parentFolderId: folderId || null,
-        spaceId: spaceId || null,
-        ...(createdAt ? { createdAt: { gte: createdAt } } : {}),
-        ...(lastFolderId ? { id: { notIn: [lastFolderId] } } : {}),
+        ...(folderId ? { parentFolderId: folderId } : {}),
+        ...(spaceId ? { spaceId: spaceId } : {}),
+        ...(createdAtDate && lastFolderId
+          ? {
+              OR: [
+                { createdAt: { lt: createdAtDate } },
+                {
+                  createdAt: createdAtDate,
+                  id: { lt: lastFolderId },
+                },
+              ],
+            }
+          : {}),
       },
-      select: { id: true, name: true, createdAt: true, workspaceId: true },
-      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        workspaceId: true,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip,
-      take: limit,
+      take: limit + 1, // to check if there is data for the next page.
     });
 
-    const lastData = folders.at(-1);
+    let lastData = null;
+
+    if (folders.length > limit) {
+      lastData = folders.pop(); // pop the extra data
+    }
 
     return {
-      nextCursor: {
-        lastFolderId: lastData?.id ?? '',
-        createdAt: lastData?.createdAt ?? '',
-      },
+      nextCursor: lastData
+        ? {
+            lastFolderId: lastData?.id ?? '',
+            createdAt: lastData?.createdAt ?? '',
+          }
+        : null,
       folders,
     };
   }
