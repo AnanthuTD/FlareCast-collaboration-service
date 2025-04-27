@@ -120,25 +120,47 @@ export class FolderService {
     userId,
     folderId,
     spaceId,
+    createdAt,
+    lastFolderId,
+    limit,
+    skip,
   }: {
     workspaceId: string;
     userId: string;
     folderId?: string;
     spaceId?: string;
+    skip?: number;
+    limit?: number;
+    lastFolderId?: string;
+    createdAt?: Date;
   }) {
     console.log(workspaceId, folderId, userId, spaceId);
 
     await this.validateMembership({ workspaceId, userId, spaceId });
 
-    return this.databaseService.folder.findMany({
+    const folders = await this.databaseService.folder.findMany({
       where: {
         workspaceId,
         parentFolderId: folderId || null,
         spaceId: spaceId || null,
+        ...(createdAt ? { createdAt: { gte: createdAt } } : {}),
+        ...(lastFolderId ? { id: { notIn: [lastFolderId] } } : {}),
       },
       select: { id: true, name: true, createdAt: true, workspaceId: true },
       orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
     });
+
+    const lastData = folders.at(-1);
+
+    return {
+      nextCursor: {
+        lastFolderId: lastData?.id ?? '',
+        createdAt: lastData?.createdAt ?? '',
+      },
+      folders,
+    };
   }
 
   /**

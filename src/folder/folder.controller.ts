@@ -44,12 +44,20 @@ export class FolderController {
     @User() user: UserType,
     @Query('folderId') parentFolderId?: string,
     @Query('spaceId') spaceId?: string,
+    @Query('skip') skip?: string,
+    @Query('limit') limit?: string,
+    @Query('lastFolderId') lastFolderId?: string,
+    @Query('createdAt') createdAt?: string,
   ) {
     return this.folderService.findFolders({
       workspaceId,
       userId: user.id,
       folderId: parentFolderId,
       spaceId,
+      skip: skip ? parseInt(skip) : null,
+      limit: limit ? parseInt(limit) : null,
+      lastFolderId: lastFolderId ?? '',
+      createdAt: createdAt ? new Date(createdAt) : null,
     });
   }
 
