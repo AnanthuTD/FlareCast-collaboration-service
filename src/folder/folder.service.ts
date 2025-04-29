@@ -140,28 +140,46 @@ export class FolderService {
 
     const createdAtDate = createdAt ? new Date(createdAt) : undefined;
 
+    const filters = [{ workspaceId }];
+
+    if (folderId) {
+      filters.push({ parentFolderId: folderId });
+    } else {
+      filters.push({
+        OR: [{ parentFolderId: { isSet: false } }, { parentFolderId: null }],
+      });
+    }
+
+    if (spaceId) {
+      filters.push({ spaceId });
+    } else {
+      filters.push({
+        OR: [{ spaceId: { isSet: false } }, { spaceId: null }],
+      });
+    }
+
+    if (createdAtDate && lastFolderId) {
+      filters.push({
+        OR: [
+          { createdAt: { lt: createdAtDate } },
+          {
+            createdAt: createdAtDate,
+            id: { lt: lastFolderId },
+          },
+        ],
+      });
+    }
+
     const folders = await this.databaseService.folder.findMany({
       where: {
-        workspaceId,
-        ...(folderId ? { parentFolderId: folderId } : {}),
-        ...(spaceId ? { spaceId: spaceId } : {}),
-        ...(createdAtDate && lastFolderId
-          ? {
-              OR: [
-                { createdAt: { lt: createdAtDate } },
-                {
-                  createdAt: createdAtDate,
-                  id: { lt: lastFolderId },
-                },
-              ],
-            }
-          : {}),
+        AND: filters,
       },
       select: {
         id: true,
         name: true,
         createdAt: true,
         workspaceId: true,
+        parentFolderId: true,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip,
@@ -389,6 +407,7 @@ export class FolderService {
 
     this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_CREATED, folder);
     this.folderGateway.emitToFolder(SOCKET_EVENTS.FOLDER_DELETED, folder);
+    return folder;
   }
 
   async searchFolder({
