@@ -2,6 +2,7 @@ import {
   WebSocketGateway,
   SubscribeMessage,
   ConnectedSocket,
+  WsException,
 } from '@nestjs/websockets';
 import { BaseGateway } from '../common/base.gateway';
 import { SOCKET_EVENTS } from 'src/common/events';
@@ -10,12 +11,7 @@ import { Folder } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
-  namespace: '/folders',
-  /*  cors: {
-    cors: true,
-    origin: ['*'],
-    credentials: true,
-  }, */
+  namespace: 'folders',
 })
 export class FoldersGateway extends BaseGateway {
   private readonly logger = new Logger(FoldersGateway.name);
@@ -43,15 +39,26 @@ export class FoldersGateway extends BaseGateway {
     @ConnectedSocket() socket: Socket,
     data: { folderId: string; spaceId: string; workspaceId: string },
   ) {
-    this.logger.log(`Subscribed to folder updates: ${JSON.stringify(data)}`);
+    if (!data || !data.folderId) {
+      throw new WsException(
+        'Could not join folder room! please provide { folderId: string }',
+      );
+    }
 
-    const roomId = this.createRoomId({
-      folderId: data.folderId,
-      workspaceId: data.workspaceId,
-      spaceId: data.spaceId,
-    });
+    try {
+      this.logger.log(`Subscribed to folder updates: ${JSON.stringify(data)}`);
 
-    socket.join(roomId);
+      const roomId = this.createRoomId({
+        folderId: data.folderId,
+        workspaceId: data.workspaceId,
+        spaceId: data.spaceId,
+      });
+
+      socket.join(roomId);
+    } catch (err) {
+      this.logger.error('Error in handleFolderUpdates', err);
+      throw new WsException('Could not join folder room');
+    }
   }
 
   emitToFolder(event: string, data: Partial<Folder>) {
