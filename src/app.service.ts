@@ -137,8 +137,6 @@ export class AppService {
       },
     });
 
-    console.log(member);
-
     return { isMember: !!member };
   }
 }

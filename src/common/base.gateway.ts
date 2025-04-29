@@ -10,11 +10,7 @@ import { Server, Socket } from 'socket.io';
 import { AuthWsMiddleware } from './ws-auth.middleware';
 
 @WebSocketGateway({
-  namespace: 'collaboration', // Matches /collaboration/socket.io/
-  /* cors: {
-    origin: ['http://localhost:3000', 'https://flarecast.ananthutd.live'], // Explicit origins
-    credentials: true, // Allow cookies
-  }, */
+  namespace: 'collaboration',
 })
 export class BaseGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
