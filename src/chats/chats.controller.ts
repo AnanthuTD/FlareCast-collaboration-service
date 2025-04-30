@@ -9,7 +9,7 @@ export class ChatsController {
    * Fetch chats.
    */
   @Get(':videoId')
-  async findFolders(
+  async getChats(
     @Param('videoId') videoId: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit = '10',
