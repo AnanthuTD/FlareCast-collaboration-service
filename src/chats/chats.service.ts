@@ -82,7 +82,7 @@ export class ChatsService {
                 cursor
                   ? {
                       $lt: [
-                        '$createdAt', // Assuming this is the correct field
+                        '$createdAt',
                         {
                           $dateFromString: {
                             dateString: cursor,
@@ -92,7 +92,10 @@ export class ChatsService {
                     }
                   : true,
                 {
-                  videoId: { $oid: videoId },
+                  $eq: [
+                    '$videoId',
+                    { $toObjectId: videoId }, // Convert string videoId to ObjectId
+                  ],
                 },
               ],
             },
@@ -156,7 +159,7 @@ export class ChatsService {
             },
             repliedTo: {
               $cond: {
-                if: { $ifNull: ['$repliedTo._id', false] }, // Better null check
+                if: { $ifNull: ['$repliedTo._id', false] },
                 then: {
                   id: { $toString: '$repliedTo._id' },
                   message: '$repliedTo.message',
