@@ -63,11 +63,12 @@ export class SpaceService {
     return { space, result };
   }
 
-  async findAll(workspaceId: string) {
+  async findAll(workspaceId: string, userId: string) {
     this.logger.log(`Fetching all spaces`);
     return await this.databaseService.space.findMany({
       where: {
         workspaceId,
+        memberIds: { has: userId },
       },
     });
   }

@@ -47,8 +47,11 @@ export class SpaceController {
   }
 
   @Get('workspace/:workspaceId')
-  async findAll(@Param('workspaceId') workspaceId: string) {
-    return await this.spaceService.findAll(workspaceId);
+  async findAll(
+    @Param('workspaceId') workspaceId: string,
+    @User() user: UserType,
+  ) {
+    return await this.spaceService.findAll(workspaceId, user.id);
   }
 
   @Get(':id')
